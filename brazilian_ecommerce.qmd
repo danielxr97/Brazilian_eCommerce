@@ -109,3 +109,27 @@ product_translations
 products
 sellers
 ```
+
+# Things to look at:
+
+- Seasonality of purchases - is there seasonality?
+
+  - What day of the week sales the most
+
+  - What are the best hours of the day for sales
+
+- Location of purchases
+
+- Most common type of payment
+
+- Who is the best seller right now
+
+- Who are we expecting to be the best seller in the future
+
+  - Forecasting reviews ratings and sales for each seller to tell us who we think will be the best seller
+
+  - I think we can use both forecasts to help us understand who's the best seller rather than making a decision on which one of the two defines what best is
+
+- What is the best selling product
+
+  - Forecast which product we expect to sell the best
