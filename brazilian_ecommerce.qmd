@@ -34,6 +34,29 @@ DBI::dbDisconnect(data)
 ```
 
 ```{r}
+# Cleaning missing values
+clean_missing <- function(data){
+  data_clean <-  data %>% 
+    dplyr::mutate(across(where(is.character), ~ na_if(stringr::str_trim(.x), "")))
+  
+  return(data_clean)
+}
+```
+
+```{r, warning=FALSE}
+# Cleaning the data
+customers <- customers %>% clean_missing()
+geo_locations <- geo_locations %>% clean_missing()
+order_items <- order_items %>% clean_missing()
+order_payments <- order_payments %>% clean_missing()
+
+order_reviews <- order_reviews %>% 
+  dplyr::mutate(
+    review_creation_date = lubridate::ymd_hms(review_creation_date),
+    review_answer_timestamp = lubridate::ymd_hms(review_answer_timestamp)
+  ) %>% 
+  clean_missing()
+
 orders <- orders %>% 
   dplyr::mutate(
     order_purchase_timestamp = lubridate::ymd_hms(order_purchase_timestamp),
@@ -43,5 +66,7 @@ orders <- orders %>%
     order_estimated_delivery_date = lubridate::ymd_hms(order_estimated_delivery_date),
   )
 
-orders
+product_translations <- product_translations %>% clean_missing()
+products <- products %>% clean_missing()
+sellers <- sellers %>% clean_missing()
 ```
