@@ -5,6 +5,7 @@ date: June 10, 2026
 format: html
 editor: visual
 embed-resources: TRUE
+toc: TRUE
 
 echo: FALSE
 message: FALSE
@@ -133,3 +134,21 @@ sellers
 - What is the best selling product
 
   - Forecast which product we expect to sell the best
+
+- How many returning customers does each seller has? Does it correlate with their reviews?
+
+```{r}
+combined_purchase <- orders %>% 
+  dplyr::transmute(
+    order_id,
+    customer_id,
+    purchase_datetime = order_purchase_timestamp,
+    purchase_date = as.Date(purchase_datetime),
+    purchase_day = lubridate::wday(purchase_datetime, label = TRUE)
+    ) %>% 
+  dplyr::left_join(
+    order_payments,
+    by = "order_id"
+  ) %>% 
+  dplyr::group_by(customer_id)
+```
