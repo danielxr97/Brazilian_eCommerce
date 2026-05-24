@@ -37,7 +37,7 @@ DBI::dbDisconnect(data)
 # Cleaning missing values
 clean_missing <- function(data){
   data_clean <-  data %>% 
-    dplyr::mutate(across(where(is.character), ~ na_if(stringr::str_trim(.x), "")))
+    dplyr::mutate(dplyr::across(tidyselect::where(is.character), ~ dplyr::na_if(stringr::str_trim(.x), "")))
   
   return(data_clean)
 }
