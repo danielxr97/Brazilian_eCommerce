@@ -1,0 +1,47 @@
+---
+title: "Brazilian eCommerce"
+author: Daniel Rabi, Jaswinder Brar
+date: June 10, 2026
+format: html
+editor: visual
+embed-resources: TRUE
+
+echo: FALSE
+message: FALSE
+warning: FALSE
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(DBI)
+library(RSQLite)
+```
+
+```{r}
+data <- DBI::dbConnect(RSQLite::SQLite(), "olist.sqlite")
+
+customers <- DBI::dbReadTable(data, "customersT")
+geo_locations <- DBI::dbReadTable(data, "geolocationsT")
+order_items <- DBI::dbReadTable(data, "order_itemsT")
+order_payments <- DBI::dbReadTable(data, "order_paymentsT")
+order_reviews <- DBI::dbReadTable(data, "order_reviewsT")
+orders <- DBI::dbReadTable(data, "ordersT")
+product_translations <- DBI::dbReadTable(data, "product_category_name_translationsT")
+products <- DBI::dbReadTable(data, "productsT")
+sellers <- DBI::dbReadTable(data, "sellersT")
+
+DBI::dbDisconnect(data)
+```
+
+```{r}
+orders <- orders %>% 
+  dplyr::mutate(
+    order_purchase_timestamp = lubridate::ymd_hms(order_purchase_timestamp),
+    order_approved_at = lubridate::ymd_hms(order_approved_at),
+    order_delivered_carrier_date = lubridate::ymd_hms(order_delivered_carrier_date),
+    order_delivered_customer_date = lubridate::ymd_hms(order_delivered_customer_date),
+    order_estimated_delivery_date = lubridate::ymd_hms(order_estimated_delivery_date),
+  )
+
+orders
+```
