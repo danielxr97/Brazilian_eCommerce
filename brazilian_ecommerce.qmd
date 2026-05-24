@@ -15,6 +15,7 @@ warning: FALSE
 library(tidyverse)
 library(DBI)
 library(RSQLite)
+library(lubridate)
 ```
 
 ```{r}
@@ -60,7 +61,7 @@ geo_locations <- geo_locations %>%
 order_items <- order_items %>% 
   dplyr::mutate(
     dplyr::across(c(order_item_id, price, freight_value), as.numeric),
-    shipping_limit_date = lubridate::ymd_hms(shipping_limit_date)
+    dplyr::across(shipping_limit_date, lubridate::ymd_hms)
   ) %>% 
   clean_missing()
 
@@ -73,18 +74,13 @@ order_payments <- order_payments %>%
 order_reviews <- order_reviews %>% 
   dplyr::mutate(
     dplyr::across(3, as.numeric),
-    review_creation_date = lubridate::ymd_hms(review_creation_date),
-    review_answer_timestamp = lubridate::ymd_hms(review_answer_timestamp)
+    dplyr::across(6:7, lubridate::ymd_hms)
   ) %>% 
   clean_missing()
 
 orders <- orders %>% 
   dplyr::mutate(
-    order_purchase_timestamp = lubridate::ymd_hms(order_purchase_timestamp),
-    order_approved_at = lubridate::ymd_hms(order_approved_at),
-    order_delivered_carrier_date = lubridate::ymd_hms(order_delivered_carrier_date),
-    order_delivered_customer_date = lubridate::ymd_hms(order_delivered_customer_date),
-    order_estimated_delivery_date = lubridate::ymd_hms(order_estimated_delivery_date),
+    dplyr::across(4:8, lubridate::ymd_hms)
   )
 
 product_translations <- product_translations %>% clean_missing()
