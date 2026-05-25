@@ -1,6 +1,6 @@
 ---
-title: "Brazilian eCommerce"
-author: Daniel Rabi, Jaswinder Brar
+title: "The Brazilian eCommerce"
+author: Daniel Rabi and Jaswinder Brar
 date: June 10, 2026
 format: html
 editor: visual
@@ -18,8 +18,10 @@ library(DBI)
 library(RSQLite)
 library(lubridate)
 library(tsibble)
+library(scales)
 library(feasts)
 library(fabletools)
+library(patchwork)
 ```
 
 ```{r}
@@ -102,7 +104,7 @@ sellers <- sellers %>%
   clean_missing()
 ```
 
-```{r}
+```{r, include=FALSE}
 customers
 geo_locations
 order_items
@@ -140,6 +142,8 @@ sellers
 
 - How many returning customers does each seller has? Does it correlate with their reviews
 
+# Seasonality
+
 ```{r}
 combined_purchase <- orders %>% 
   dplyr::transmute(
@@ -162,45 +166,56 @@ seasonality_purchase <- combined_purchase %>%
     total_value = sum(payment_value, na.rm = TRUE),
     total_orders = dplyr::n_distinct(order_id),
     total_customers = dplyr::n_distinct(customer_id),
+    first_date = min(purchase_date, na.rm = TRUE),
+    last_date = max(purchase_date, na.rm = TRUE),
     .groups = "drop"
   ) %>% 
   tsibble::as_tsibble(index = purchase_yearmonth)
-
-combined_purchase
-seasonality_purchase
 ```
 
-```{r}
-combined_purchase %>% 
-  dplyr::filter(purchase_yearmonth == tsibble::yearmonth("2018 Jul")) %>% 
-  dplyr::arrange(purchase_datetime)
-```
-
-```{r}
-seasonality_purchase %>% 
-  ggplot2::autoplot(total_value)
-```
-
-The graph above displays an upward trend in total value of purchases and rejects the idea of seasonality across total value of purchases. The suddent drop in total value in July 2018 arises from the simple reason that the data we possess ends at July 5th, 2018 and not from a drop in purchases.
-
-```{r}
-seasonality_purchase %>% 
+```{r, fig.height= 9, fig.width= 8}
+seas_1 <- seasonality_purchase %>% 
   tsibble::fill_gaps(total_value = 0) %>% 
-  feasts::gg_season(total_value)
-```
+  ggplot2::autoplot(total_value) +
+  ggplot2::scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+  ggplot2::labs(
+    title = "Monthly Total Purchase Value Over Time",
+    x = "Time",
+    y = "Total Value ($)"
+  ) +
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
 
-```{r}
-seasonality_purchase %>% 
+seas_2 <- seasonality_purchase %>% 
   tsibble::fill_gaps(total_value = 0) %>% 
-  feasts::gg_subseries(total_value)
-```
+  feasts::gg_subseries(total_value) +
+  tsibble::scale_x_yearmonth(date_labels = "%Y") +
+  ggplot2::labs(
+    title = "Total Value of Purchases Over Time",
+    subtitle = "Highliting the trend by Year",
+    x = "Time",
+    y = "Total Value ($)"
+  ) +
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) +
+  ggplot2::theme(plot.subtitle = ggplot2::element_text(hjust = 0.5))
 
-```{r}
 stl_model <- seasonality_purchase %>% 
   tsibble::fill_gaps(total_value = 0) %>% 
   fabletools::model(feasts::STL(formula = total_value ~ season(window = 13)))
 
-stl_model %>% 
+seas_3 <- stl_model %>% 
   fabletools::components() %>% 
-  ggplot2::autoplot()
+  ggplot2::autoplot() +
+  ggplot2::scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+  ggplot2::labs(
+    title = "STL Decomposition of Monthly Purchase Value",
+    subtitle = "Total Value = Trend + Season Year + Remainder",
+    x = "Time",
+    y = "Total Value ($)"
+  ) +
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) +
+  ggplot2::theme(plot.subtitle = ggplot2::element_text(hjust = 0.5))
+
+seas_1 / seas_3
 ```
+
+The graph above displays an upward trend in total value of purchases and rejects the idea of seasonality across total value of purchases. The suddent drop in total value in July 2018 arises from the simple reason that the data we possess ends at July 5th, 2018 and not from a drop in purchases.
