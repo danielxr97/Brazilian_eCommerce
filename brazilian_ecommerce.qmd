@@ -17,6 +17,9 @@ library(tidyverse)
 library(DBI)
 library(RSQLite)
 library(lubridate)
+library(tsibble)
+library(feasts)
+library(fabletools)
 ```
 
 ```{r}
@@ -135,7 +138,7 @@ sellers
 
   - Forecast which product we expect to sell the best
 
-- How many returning customers does each seller has? Does it correlate with their reviews?
+- How many returning customers does each seller has? Does it correlate with their reviews
 
 ```{r}
 combined_purchase <- orders %>% 
@@ -144,11 +147,60 @@ combined_purchase <- orders %>%
     customer_id,
     purchase_datetime = order_purchase_timestamp,
     purchase_date = as.Date(purchase_datetime),
-    purchase_day = lubridate::wday(purchase_datetime, label = TRUE)
+    purchase_month = lubridate::month(purchase_datetime, label = TRUE),
+    purchase_day = lubridate::wday(purchase_datetime, label = TRUE),
+    purchase_yearmonth = tsibble::yearmonth(purchase_date)
     ) %>% 
   dplyr::left_join(
     order_payments,
     by = "order_id"
+  )
+
+seasonality_purchase <- combined_purchase %>% 
+  dplyr::group_by(purchase_yearmonth) %>% 
+  dplyr::summarise(
+    total_value = sum(payment_value, na.rm = TRUE),
+    total_orders = dplyr::n_distinct(order_id),
+    total_customers = dplyr::n_distinct(customer_id),
+    .groups = "drop"
   ) %>% 
-  dplyr::group_by(customer_id)
+  tsibble::as_tsibble(index = purchase_yearmonth)
+
+combined_purchase
+seasonality_purchase
+```
+
+```{r}
+combined_purchase %>% 
+  dplyr::filter(purchase_yearmonth == tsibble::yearmonth("2018 Jul")) %>% 
+  dplyr::arrange(purchase_datetime)
+```
+
+```{r}
+seasonality_purchase %>% 
+  ggplot2::autoplot(total_value)
+```
+
+The graph above displays an upward trend in total value of purchases and rejects the idea of seasonality across total value of purchases. The suddent drop in total value in July 2018 arises from the simple reason that the data we possess ends at July 5th, 2018 and not from a drop in purchases.
+
+```{r}
+seasonality_purchase %>% 
+  tsibble::fill_gaps(total_value = 0) %>% 
+  feasts::gg_season(total_value)
+```
+
+```{r}
+seasonality_purchase %>% 
+  tsibble::fill_gaps(total_value = 0) %>% 
+  feasts::gg_subseries(total_value)
+```
+
+```{r}
+stl_model <- seasonality_purchase %>% 
+  tsibble::fill_gaps(total_value = 0) %>% 
+  fabletools::model(feasts::STL(formula = total_value ~ season(window = 13)))
+
+stl_model %>% 
+  fabletools::components() %>% 
+  ggplot2::autoplot()
 ```
