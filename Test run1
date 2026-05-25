@@ -1,0 +1,190 @@
+---
+title: "Final exam"
+format: html
+editor: visual
+---
+
+{r}
+
+install.packages("tidyverse")
+install.packages("DBI")
+install.packages("RSQLite")
+install.packages("lubridate")
+install.packages("dplyr")
+install.packages("ggplot2")
+
+library("ggplot2")
+library("dplyr")
+library("tidyverse")
+library("DBI")
+library("RSQLite")
+library("lubridate")
+
+{r}
+if(exists("dbcon")) dbDisconnect(dbcon)
+db_path <- "/Users/jaswinderbrar/Documents/OM420/Final project/olist.sqlite"
+dbcon <- DBI::dbConnect(RSQLite::SQLite(), db_path)
+
+head(dbReadTable(dbcon, "olist_order_items_dataset"), 5)
+tables <- dbListTables(dbcon)
+getwd()
+file.exists("olist.sqlite")
+if(dbIsValid(dbcon)) {
+  print("Connection Successful!")
+  print(dbListTables(dbcon))
+} else {
+  print("Connection Failed.")
+}
+
+
+dbGetQuery(dbcon, "SELECT * FROM ordersT LIMIT 5")
+
+all_tables <- dbListTables(dbcon)
+
+?gsub
+?assign
+for (table_name in all_tables) {
+  
+  clean_name <- gsub("T$", "", table_name)
+  
+  assign(clean_name, dbReadTable(dbcon, table_name))
+}
+
+
+head(customers)
+
+DBI::dbDisconnect(dbcon)
+
+{r}
+
+
+clean_missing <- function(dfcon){
+  data_clean <-  dfcon %>% 
+    dplyr::mutate(dplyr::across(tidyselect::where(is.character), ~ dplyr::na_if(stringr::str_trim(.x), "")))
+  
+  return(data_clean)
+}
+data_clean
+
+{r}
+
+customers <- customers %>% 
+  dplyr::mutate(
+    dplyr::across(3, as.numeric)
+  ) %>% 
+  clean_missing()
+
+geolocations <- geolocations %>% 
+  dplyr::mutate(
+    dplyr::across(1:3, as.numeric)
+  ) %>% 
+  clean_missing()
+order_items <- order_items %>% 
+  dplyr::mutate(
+    dplyr::across(c(order_item_id, price, freight_value), as.numeric),
+    dplyr::across(shipping_limit_date, lubridate::ymd_hms)
+  ) %>% 
+  clean_missing()
+
+order_payments <- order_payments %>% 
+  dplyr::mutate(
+    dplyr::across(c(2, 4, 5), as.numeric)
+  ) %>% 
+  clean_missing()
+
+order_reviews <- order_reviews %>% 
+  dplyr::mutate(
+    dplyr::across(3, as.numeric),
+    dplyr::across(6:7, lubridate::ymd_hms)
+  ) %>% 
+  clean_missing()
+
+orders <- orders %>% 
+  dplyr::mutate(
+    dplyr::across(4:8, lubridate::ymd_hms)
+  )
+
+product_category_name_translations <- product_category_name_translations %>% clean_missing()
+
+products <- products %>% 
+  dplyr::mutate(
+    dplyr::across(3:9, as.numeric)
+  ) %>% 
+  clean_missing()
+
+sellers <- sellers %>% 
+  dplyr::mutate(
+    dplyr::across(2, as.numeric)
+  ) %>% 
+  clean_missing()
+
+
+products_cleaned <- products %>%
+  left_join
+sum(is.na(orders$order_purchase_timestamp))
+sum(is.na(orders$order_delivered_customer_date))
+
+
+
+{r}
+
+customers
+geolocations
+order_items
+order_payments
+order_reviews
+orders
+product_category_name_translations
+products
+sellers
+inconsistent_orders
+
+
+{r}
+
+
+products_with_english <- products %>%
+  left_join(product_category_name_translations, by = "product_category_name")
+
+missing_translations <- products_with_english %>%
+  filter(is.na(product_category_name_english)) %>%
+  select(product_category_name) %>%
+  distinct()
+
+print(missing_translations)
+
+products_final <- products_with_english %>%
+  mutate(product_category_name_english = case_when(
+    is.na(product_category_name_english) ~ "Other", 
+    TRUE ~ product_category_name_english
+  ))
+
+{r}
+
+?difftime
+
+?wday
+?group_by
+orders_analysis <- orders %>%
+  mutate(
+    delivery_duration = as.numeric(difftime(order_delivered_customer_date, 
+                                           order_purchase_timestamp, 
+                                           units = "days")),
+    purchase_day = wday(order_purchase_timestamp, label = TRUE, abbr = FALSE)
+  ) %>%
+  filter(!is.na(delivery_duration)) 
+
+daily_performance <- orders_analysis %>%
+  group_by(purchase_day) %>%
+  summarise(avg_delivery_time = mean(delivery_duration, na.rm = TRUE))
+
+{r}
+ggplot(daily_performance, aes(x = purchase_day, y = avg_delivery_time, fill = purchase_day)) +
+  geom_col() +
+  theme_minimal() +
+  labs(title = "Average Delivery Time by Day of Purchase",
+       subtitle = "Does ordering on a weekend affect delivery speed?",
+       x = "Day of Purchase",
+       y = "Average Delivery Days") +
+  theme(legend.position = "none")
+
