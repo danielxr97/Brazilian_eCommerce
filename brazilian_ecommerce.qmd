@@ -104,7 +104,7 @@ sellers <- sellers %>%
   clean_missing()
 ```
 
-```{r, include=FALSE}
+```{r}
 customers
 geo_locations
 order_items
@@ -132,13 +132,27 @@ sellers
 
 - Who are we expecting to be the best seller in the future
 
-  - Forecasting reviews ratings and sales for each seller to tell us who we think will be the best seller
+  - Predicting reviews ratings and sales for each seller to tell us who we think will be the best seller
 
   - I think we can use both forecasts to help us understand who's the best seller rather than making a decision on which one of the two defines what best is
 
-- What is the best selling product
+- What is the best selling product category
 
-  - Forecast which product we expect to sell the best
+  - Predict which category we expect to sell the best next month
+
+  - Factors:
+
+    - Lag revenue
+
+    - Review scores
+
+    - Review comment no comment
+
+    - Rolling SD
+
+    - Rolling mean
+
+    - 
 
 - How many returning customers does each seller has? Does it correlate with their reviews
 
@@ -156,7 +170,8 @@ combined_purchase <- orders %>%
     purchase_yearmonth = tsibble::yearmonth(purchase_date)
     ) %>% 
   dplyr::left_join(
-    order_payments,
+    order_payments %>% 
+      dplyr::group_by(order_id),
     by = "order_id"
   )
 
@@ -173,7 +188,7 @@ seasonality_purchase <- combined_purchase %>%
   tsibble::as_tsibble(index = purchase_yearmonth)
 ```
 
-```{r, fig.height= 9, fig.width= 8}
+```{r}
 seas_1 <- seasonality_purchase %>% 
   tsibble::fill_gaps(total_value = 0) %>% 
   ggplot2::autoplot(total_value) +
@@ -215,7 +230,116 @@ seas_3 <- stl_model %>%
   ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5)) +
   ggplot2::theme(plot.subtitle = ggplot2::element_text(hjust = 0.5))
 
-seas_1 / seas_3
+seas_3
 ```
 
-The graph above displays an upward trend in total value of purchases and rejects the idea of seasonality across total value of purchases. The suddent drop in total value in July 2018 arises from the simple reason that the data we possess ends at July 5th, 2018 and not from a drop in purchases.
+The graph above displays an upward trend in total value of purchases and rejects the idea of seasonality across total value of purchases. The sudden drop in total value in July 2018 arises from the simple reason that the data we possess ends at July 5th, 2018 and not from a drop in purchases.
+
+# Best Seller
+
+```{r}
+combined_purchase
+seasonality_purchase
+```
+
+```{r}
+sellers_tbl <- sellers %>% 
+  dplyr::left_join(
+    order_items,
+    by = "seller_id"
+  ) %>% 
+  dplyr::group_by(seller_id) %>% 
+  dplyr::summarise(total_price = sum(price))
+
+sellers_tbl
+```
+
+```{r}
+sellers_tbl %>% 
+  dplyr::arrange(desc(total_price)) %>% 
+  dplyr::slice_head(n = 5) %>% 
+  ggplot2::ggplot(ggplot2::aes(x = seller_id, y = total_price)) +
+  ggplot2::geom_col(ggplot2::aes(fill = seller_id))
+```
+
+# Best Product Category
+
+```{r}
+product_tbl <- products %>% 
+  dplyr::left_join(
+    order_items,
+    by = "product_id"
+  ) %>% 
+  dplyr::left_join(
+    product_translations,
+    by = "product_category_name"
+  ) %>% 
+  dplyr::group_by(product_category_name_english) %>% 
+  dplyr::select(-product_category_name) %>% 
+  dplyr::rename(product_category = product_category_name_english)
+
+product_tbl
+```
+
+```{r}
+best_category <- product_tbl %>% 
+  dplyr::summarise(
+    total_revenue = sum(price, na.rm = TRUE),
+    total_sold = n(),
+    .groups = "drop"
+  ) %>% 
+  dplyr::arrange(desc(total_revenue))
+
+best_category %>% 
+  dplyr::slice_head(n = 5) %>% 
+  ggplot2::ggplot(ggplot2::aes(x = stats::reorder(product_category, -total_revenue), y = total_revenue, fill = product_category)) +
+  ggplot2::geom_col() +
+  ggplot2::scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = -25, hjust = -0.01)) +
+  ggplot2::labs(
+    title = "Top 5 Total Revenue by Category",
+    x = "Product Category",
+    y = "Total Revenue",
+    fill = "Product Category"
+  ) +
+  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
+```
+
+As we can see above, the top five best selling product categories are:
+
+1.  Health beauty
+2.  Watches gifts
+3.  Bed bath tables
+4.  Sports leisure
+5.  Computers accessories
+
+However, the fact that the health beauty category is best seller does not guarantee that it will stay the best seller. Therefore we will use machine learning to predict which category we expect to be the best selling product category next month.
+
+## Predicting The Best Product Category
+
+```{r}
+pred_category <- product_tbl %>% 
+  dplyr::left_join(
+    orders %>% 
+      dplyr::select(order_id, order_purchase_timestamp),
+    by = "order_id"
+  ) %>% 
+  dplyr::mutate(
+    purchase_yearweek = tsibble::yearweek(order_purchase_timestamp)
+  ) %>% 
+  dplyr::group_by(purchase_yearweek, product_category, seller_id) %>% 
+  dplyr::summarise(
+    total_revenue = sum(price, na.rm = TRUE),
+    total_sellers = n(),
+    .groups = "drop"
+  ) %>% 
+  tidyr::complete(purchase_yearweek, product_category, fill = list(total_revenue = 0)) %>% 
+  dplyr::group_by(product_category) %>% 
+  dplyr::arrange(product_category, purchase_yearweek) %>% 
+  dplyr::mutate(
+    lag_revenue = dplyr::lag(total_revenue, 1)
+  ) %>% 
+  tidyr::drop_na()
+
+pred_category
+```
