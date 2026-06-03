@@ -16,12 +16,12 @@ warning: FALSE
 library(tidyverse)
 library(DBI)
 library(RSQLite)
-library(lubridate)
 library(tsibble)
 library(scales)
 library(feasts)
 library(fabletools)
 library(patchwork)
+library(slider)
 ```
 
 ```{r}
@@ -86,7 +86,11 @@ order_reviews <- order_reviews %>%
 
 orders <- orders %>% 
   dplyr::mutate(
-    dplyr::across(4:8, lubridate::ymd_hms)
+    dplyr::across(4:8, lubridate::ymd_hms),
+    late = dplyr::case_when(
+      order_estimated_delivery_date >= order_delivered_customer_date ~ 0, # 0: FALSE
+      order_estimated_delivery_date < order_delivered_customer_date ~ 1 # 1: TRUE
+    )
   )
 
 product_translations <- product_translations %>% clean_missing()
@@ -265,6 +269,11 @@ sellers_tbl %>%
 # Best Product Category
 
 ```{r}
+products %>% 
+  dplyr::filter(is.na(product_category_name) == TRUE)
+```
+
+```{r}
 product_tbl <- products %>% 
   dplyr::left_join(
     order_items,
@@ -279,6 +288,11 @@ product_tbl <- products %>%
   dplyr::rename(product_category = product_category_name_english)
 
 product_tbl
+```
+
+```{r}
+product_tbl %>% 
+  dplyr::filter(is.na(product_category) == TRUE)
 ```
 
 ```{r}
@@ -318,26 +332,89 @@ However, the fact that the health beauty category is best seller does not guaran
 ## Predicting The Best Product Category
 
 ```{r}
-pred_category <- product_tbl %>% 
-  dplyr::left_join(
-    orders %>% 
-      dplyr::select(order_id, order_purchase_timestamp),
+weekly_reviews <- order_reviews %>% 
+  dplyr::group_by(order_id) %>% 
+  dplyr::summarise(
+    review_yearweek = tsibble::yearweek(max(review_answer_timestamp, na.rm = TRUE)),
+    review_score = mean(review_score, na.rm = TRUE),
+    .groups = "drop"
+  ) %>% 
+  dplyr::inner_join(
+    product_tbl %>% 
+      dplyr::select(order_id, product_category) %>% 
+      dplyr::distinct() %>% 
+      tidyr::drop_na(product_category),
     by = "order_id"
   ) %>% 
+  dplyr::group_by(review_yearweek, product_category) %>% 
+  dplyr::summarise(
+    avg_reviews = mean(review_score, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+weekly_orders <- orders %>% 
+  dplyr::select(order_id, order_purchase_timestamp) %>% 
+  dplyr::mutate(
+    purchase_yearweek = tsibble::yearweek(order_purchase_timestamp)
+  )
+
+weekly_late <- orders %>%
+  dplyr::select(order_id, order_purchase_timestamp, late) %>% 
   dplyr::mutate(
     purchase_yearweek = tsibble::yearweek(order_purchase_timestamp)
   ) %>% 
-  dplyr::group_by(purchase_yearweek, product_category, seller_id) %>% 
+  dplyr::left_join(
+    product_tbl %>% 
+      dplyr::select(order_id, product_category),
+    by = "order_id"
+  ) %>% 
+  tidyr::drop_na(product_category) %>% 
+  dplyr::group_by(purchase_yearweek, product_category) %>% 
+  dplyr::arrange(purchase_yearweek, product_category) %>% 
+  dplyr::summarise(
+    late_proportion = mean(late, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+```{r}
+pred_category <- product_tbl %>% 
+  dplyr::left_join(
+    weekly_orders,
+    by = "order_id"
+  ) %>% 
+  dplyr::group_by(purchase_yearweek, product_category) %>% 
   dplyr::summarise(
     total_revenue = sum(price, na.rm = TRUE),
-    total_sellers = n(),
+    total_sellers = n_distinct(seller_id),
     .groups = "drop"
   ) %>% 
-  tidyr::complete(purchase_yearweek, product_category, fill = list(total_revenue = 0)) %>% 
-  dplyr::group_by(product_category) %>% 
+  dplyr::left_join(
+    weekly_reviews,
+    by = c("purchase_yearweek" = "review_yearweek", "product_category")
+  ) %>% 
+  dplyr::left_join(
+    weekly_late,
+    by = c("purchase_yearweek" = "purchase_yearweek", "product_category")
+  ) %>% 
   dplyr::arrange(product_category, purchase_yearweek) %>% 
+  dplyr::group_by(product_category) %>% 
   dplyr::mutate(
-    lag_revenue = dplyr::lag(total_revenue, 1)
+    lag_revenue = dplyr::lag(total_revenue, 1),
+    rolling_sd4 = slider::slide_dbl(
+      .x = total_revenue,
+      .f = sd,
+      .before = 4, # Looking 4 weeks back
+      .after = 0,
+      .complete = FALSE 
+    ),
+    rolling_mean4 = slider::slide_dbl(
+      .x = total_revenue,
+      .f = mean,
+      .before = 4,
+      .after = 0,
+      .complete = FALSE 
+    )
   ) %>% 
   tidyr::drop_na()
 
