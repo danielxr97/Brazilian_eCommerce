@@ -171,7 +171,8 @@ combined_purchase <- orders %>%
     purchase_date = as.Date(purchase_datetime),
     purchase_month = lubridate::month(purchase_datetime, label = TRUE),
     purchase_day = lubridate::wday(purchase_datetime, label = TRUE),
-    purchase_yearmonth = tsibble::yearmonth(purchase_date)
+    purchase_yearmonth = tsibble::yearmonth(purchase_date),
+    purchase_yearweek = tsibble::yearweek(purchase_date)
     ) %>% 
   dplyr::left_join(
     order_payments %>% 
@@ -180,7 +181,7 @@ combined_purchase <- orders %>%
   )
 
 seasonality_purchase <- combined_purchase %>% 
-  dplyr::group_by(purchase_yearmonth) %>% 
+  dplyr::group_by(purchase_yearweek) %>% 
   dplyr::summarise(
     total_value = sum(payment_value, na.rm = TRUE),
     total_orders = dplyr::n_distinct(order_id),
@@ -189,7 +190,7 @@ seasonality_purchase <- combined_purchase %>%
     last_date = max(purchase_date, na.rm = TRUE),
     .groups = "drop"
   ) %>% 
-  tsibble::as_tsibble(index = purchase_yearmonth)
+  tsibble::as_tsibble(index = purchase_yearweek)
 ```
 
 ```{r}
@@ -207,7 +208,7 @@ seas_1 <- seasonality_purchase %>%
 seas_2 <- seasonality_purchase %>% 
   tsibble::fill_gaps(total_value = 0) %>% 
   feasts::gg_subseries(total_value) +
-  tsibble::scale_x_yearmonth(date_labels = "%Y") +
+  tsibble::scale_x_yearweek(date_labels = "%Y") +
   ggplot2::labs(
     title = "Total Value of Purchases Over Time",
     subtitle = "Highliting the trend by Year",
@@ -225,8 +226,12 @@ seas_3 <- stl_model %>%
   fabletools::components() %>% 
   ggplot2::autoplot() +
   ggplot2::scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+  tsibble::scale_x_yearweek(
+    date_breaks = "3 months",
+    date_labels = "%Y %b"
+    ) +
   ggplot2::labs(
-    title = "STL Decomposition of Monthly Purchase Value",
+    title = "STL Decomposition of Weekly Purchase Value",
     subtitle = "Total Value = Trend + Season Year + Remainder",
     x = "Time",
     y = "Total Value ($)"
@@ -329,7 +334,7 @@ As we can see above, the top five best selling product categories are:
 
 However, the fact that the health beauty category is best seller does not guarantee that it will stay the best seller. Therefore we will use machine learning to predict which category we expect to be the best selling product category next month.
 
-## Predicting The Best Product Category
+## Predicting Weekly category Revenue
 
 ```{r}
 weekly_reviews <- order_reviews %>% 
@@ -416,7 +421,49 @@ pred_category <- product_tbl %>%
       .complete = FALSE 
     )
   ) %>% 
-  tidyr::drop_na()
+  tidyr::drop_na() %>% 
+  dplyr::ungroup()
 
 pred_category
+```
+
+## Predict Weekly Category Order Volume
+
+```{r}
+pred_orders <- product_tbl %>% 
+  dplyr::left_join(
+    weekly_orders,
+    by = "order_id"
+  ) %>% 
+  dplyr::group_by(purchase_yearweek, product_category) %>% 
+  dplyr::summarise(
+    total_orders = dplyr::n_distinct(order_id),
+    total_revenue = sum(price, na.rm = TRUE),
+    avg_order_value = total_revenue / total_orders,
+    total_sellers = dplyr::n_distinct(seller_id),
+    .groups = "drop"
+  ) %>% 
+  dplyr::arrange(product_category, purchase_yearweek) %>% 
+  dplyr::group_by(product_category) %>% 
+  dplyr::mutate(
+    lag_orders = dplyr::lag(total_orders, 1),
+    rolling_mean4 = slider::slide_dbl(
+      total_orders,
+      mean,
+      .before = 4,
+      .after = 0,
+      .complete = FALSE
+    ),
+    rolling_sd4 = slider::slide_dbl(
+      total_orders,
+      sd,
+      .before = 4,
+      .after = 0,
+      .complete = FALSE
+    )
+  ) %>% 
+  tidyr::drop_na() %>% 
+  dplyr::ungroup()
+
+pred_orders
 ```
