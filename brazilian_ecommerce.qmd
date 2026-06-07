@@ -337,21 +337,36 @@ However, the fact that the health beauty category is best seller does not guaran
 ## Predicting Weekly category Revenue
 
 ```{r}
-weekly_reviews <- order_reviews %>% 
-  dplyr::group_by(order_id) %>% 
-  dplyr::summarise(
-    review_yearweek = tsibble::yearweek(max(review_answer_timestamp, na.rm = TRUE)),
-    review_score = mean(review_score, na.rm = TRUE),
-    .groups = "drop"
-  ) %>% 
-  dplyr::inner_join(
-    product_tbl %>% 
-      dplyr::select(order_id, product_category) %>% 
-      dplyr::distinct() %>% 
-      tidyr::drop_na(product_category),
+weekly_reviews <- order_reviews %>%
+  dplyr::left_join(
+    orders %>% 
+      dplyr::select(order_id, order_purchase_timestamp),
     by = "order_id"
   ) %>% 
-  dplyr::group_by(review_yearweek, product_category) %>% 
+  dplyr::group_by(order_id) %>%
+  dplyr::summarise(
+    purchase_yearweek = tsibble::yearweek(max(order_purchase_timestamp, na.rm = TRUE)),
+    review_score = mean(review_score, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::left_join(
+    product_tbl %>%
+      dplyr::select(order_id, product_category) %>%
+      dplyr::distinct() %>%
+      tidyr::drop_na(product_category),
+    by = "order_id"
+  ) %>%
+  tidyr::drop_na(product_category) %>% 
+  dplyr::group_by(product_category) %>%
+  tidyr::complete(
+    purchase_yearweek = seq(min(purchase_yearweek), max(purchase_yearweek), by = 1),
+    fill = list(review_score = NA)
+  ) %>%
+  dplyr::mutate(
+    review_score = tidyr::replace_na(review_score, mean(review_score, na.rm = TRUE))
+  ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::group_by(purchase_yearweek, product_category) %>% 
   dplyr::summarise(
     avg_reviews = mean(review_score, na.rm = TRUE),
     .groups = "drop"
@@ -375,7 +390,10 @@ weekly_late <- orders %>%
   ) %>% 
   tidyr::drop_na(product_category) %>% 
   dplyr::group_by(purchase_yearweek, product_category) %>% 
-  dplyr::arrange(purchase_yearweek, product_category) %>% 
+  dplyr::arrange(purchase_yearweek, product_category) %>%
+  dplyr::mutate(
+    late = tidyr::replace_na(late, 0)
+  ) %>% 
   dplyr::summarise(
     late_proportion = mean(late, na.rm = TRUE),
     .groups = "drop"
@@ -393,6 +411,60 @@ pred_category <- product_tbl %>%
     total_revenue = sum(price, na.rm = TRUE),
     total_sellers = n_distinct(seller_id),
     .groups = "drop"
+  ) %>% 
+  dplyr::left_join(
+    weekly_reviews,
+    by = c("purchase_yearweek", "product_category")
+  ) %>% 
+  dplyr::left_join(
+    weekly_late,
+    by = c("purchase_yearweek", "product_category")
+  ) %>% 
+  dplyr::arrange(product_category, purchase_yearweek) %>% 
+  dplyr::group_by(product_category) %>% 
+  dplyr::mutate(
+    lag_revenue = dplyr::lag(total_revenue, 1),
+    rolling_sd4 = slider::slide_dbl(
+      .x = total_revenue,
+      .f = sd,
+      .before = 4, # Looking 4 weeks back
+      .after = 0,
+      .complete = FALSE 
+    ),
+    rolling_mean4 = slider::slide_dbl(
+      .x = total_revenue,
+      .f = mean,
+      .before = 4,
+      .after = 0,
+      .complete = FALSE 
+    )
+  ) %>% 
+  tidyr::drop_na() %>% 
+  dplyr::ungroup()
+
+pred_category
+```
+
+```{r}
+product_tbl %>% 
+  dplyr::left_join(
+    weekly_orders,
+    by = "order_id"
+    ) %>% 
+  tidyr::drop_na(product_category, purchase_yearweek) %>% 
+  dplyr::group_by(purchase_yearweek, product_category) %>% 
+  dplyr::summarise(
+    total_revenue = sum(price, na.rm = TRUE),
+    total_sellers = n_distinct(seller_id),
+    .groups = "drop"
+  ) %>% 
+  dplyr::group_by(product_category) %>% 
+  tidyr::complete(
+    purchase_yearweek = seq(min(purchase_yearweek), max(purchase_yearweek), by = 1),
+    fill = list(
+      total_revenue = 0,
+      total_sellers = 0
+    )
   ) %>% 
   dplyr::left_join(
     weekly_reviews,
@@ -421,10 +493,9 @@ pred_category <- product_tbl %>%
       .complete = FALSE 
     )
   ) %>% 
-  tidyr::drop_na() %>% 
-  dplyr::ungroup()
-
-pred_category
+  tidyr::drop_na(lag_revenue) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::filter(grepl("2016", purchase_yearweek))
 ```
 
 ## Predict Weekly Category Order Volume
@@ -467,3 +538,21 @@ pred_orders <- product_tbl %>%
 
 pred_orders
 ```
+
+# Weekly Customer Retention Rate
+
+What are the chances that a customer will purchase again
+
+Predictors:
+
+- Lag 1 for whether a customer bought or not
+
+- Left a comment or not
+
+- Average review score
+
+- Was delivery delayed?
+
+Target:
+
+- 
