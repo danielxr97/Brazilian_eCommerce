@@ -336,6 +336,8 @@ However, the fact that the health beauty category is best seller does not guaran
 
 ## Predicting Weekly category Revenue
 
+Eight orders were identified as "delivered" but lacked a recorded customer delivery date. Since delivery timeliness could not be determined for these observations, they were excluded from the late-delivery analysis. Missing weekly review scores were imputed using the average review score within the corresponding product category. For category-weeks with no observed delivery records, the late-delivery proportion was set to zero.
+
 ```{r}
 weekly_reviews <- order_reviews %>%
   dplyr::left_join(
@@ -379,6 +381,7 @@ weekly_orders <- orders %>%
   )
 
 weekly_late <- orders %>%
+  dplyr::filter(order_status == "delivered" & ! is.na(late)) %>% 
   dplyr::select(order_id, order_purchase_timestamp, late) %>% 
   dplyr::mutate(
     purchase_yearweek = tsibble::yearweek(order_purchase_timestamp)
@@ -389,11 +392,17 @@ weekly_late <- orders %>%
     by = "order_id"
   ) %>% 
   tidyr::drop_na(product_category) %>% 
-  dplyr::group_by(purchase_yearweek, product_category) %>% 
+  dplyr::group_by(product_category) %>% 
   dplyr::arrange(purchase_yearweek, product_category) %>%
+  tidyr::complete(
+    purchase_yearweek = seq(min(purchase_yearweek), max(purchase_yearweek), by = 1),
+    fill = list(late = NA)
+  ) %>% 
   dplyr::mutate(
     late = tidyr::replace_na(late, 0)
   ) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::group_by(purchase_yearweek, product_category) %>% 
   dplyr::summarise(
     late_proportion = mean(late, na.rm = TRUE),
     .groups = "drop"
@@ -406,51 +415,6 @@ pred_category <- product_tbl %>%
     weekly_orders,
     by = "order_id"
   ) %>% 
-  dplyr::group_by(purchase_yearweek, product_category) %>% 
-  dplyr::summarise(
-    total_revenue = sum(price, na.rm = TRUE),
-    total_sellers = n_distinct(seller_id),
-    .groups = "drop"
-  ) %>% 
-  dplyr::left_join(
-    weekly_reviews,
-    by = c("purchase_yearweek", "product_category")
-  ) %>% 
-  dplyr::left_join(
-    weekly_late,
-    by = c("purchase_yearweek", "product_category")
-  ) %>% 
-  dplyr::arrange(product_category, purchase_yearweek) %>% 
-  dplyr::group_by(product_category) %>% 
-  dplyr::mutate(
-    lag_revenue = dplyr::lag(total_revenue, 1),
-    rolling_sd4 = slider::slide_dbl(
-      .x = total_revenue,
-      .f = sd,
-      .before = 4, # Looking 4 weeks back
-      .after = 0,
-      .complete = FALSE 
-    ),
-    rolling_mean4 = slider::slide_dbl(
-      .x = total_revenue,
-      .f = mean,
-      .before = 4,
-      .after = 0,
-      .complete = FALSE 
-    )
-  ) %>% 
-  tidyr::drop_na() %>% 
-  dplyr::ungroup()
-
-pred_category
-```
-
-```{r}
-product_tbl %>% 
-  dplyr::left_join(
-    weekly_orders,
-    by = "order_id"
-    ) %>% 
   tidyr::drop_na(product_category, purchase_yearweek) %>% 
   dplyr::group_by(purchase_yearweek, product_category) %>% 
   dplyr::summarise(
@@ -468,11 +432,11 @@ product_tbl %>%
   ) %>% 
   dplyr::left_join(
     weekly_reviews,
-    by = c("purchase_yearweek" = "review_yearweek", "product_category")
+    by = c("purchase_yearweek", "product_category")
   ) %>% 
   dplyr::left_join(
     weekly_late,
-    by = c("purchase_yearweek" = "purchase_yearweek", "product_category")
+    by = c("purchase_yearweek", "product_category")
   ) %>% 
   dplyr::arrange(product_category, purchase_yearweek) %>% 
   dplyr::group_by(product_category) %>% 
@@ -494,8 +458,9 @@ product_tbl %>%
     )
   ) %>% 
   tidyr::drop_na(lag_revenue) %>% 
-  dplyr::ungroup() %>% 
-  dplyr::filter(grepl("2016", purchase_yearweek))
+  dplyr::ungroup()
+
+pred_category
 ```
 
 ## Predict Weekly Category Order Volume
