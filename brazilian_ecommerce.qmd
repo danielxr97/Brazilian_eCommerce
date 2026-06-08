@@ -22,6 +22,8 @@ library(feasts)
 library(fabletools)
 library(patchwork)
 library(slider)
+library(tidymodels)
+library(rsample)
 ```
 
 ```{r}
@@ -108,7 +110,7 @@ sellers <- sellers %>%
   clean_missing()
 ```
 
-```{r}
+```{r, include=FALSE}
 customers
 geo_locations
 order_items
@@ -334,7 +336,7 @@ As we can see above, the top five best selling product categories are:
 
 However, the fact that the health beauty category is best seller does not guarantee that it will stay the best seller. Therefore we will use machine learning to predict which category we expect to be the best selling product category next month.
 
-## Predicting Weekly category Revenue
+## Predicting Weekly Category Revenue
 
 Eight orders were identified as "delivered" but lacked a recorded customer delivery date. Since delivery timeliness could not be determined for these observations, they were excluded from the late-delivery analysis. Missing weekly review scores were imputed using the average review score within the corresponding product category. For category-weeks with no observed delivery records, the late-delivery proportion was set to zero.
 
@@ -438,6 +440,7 @@ pred_category <- product_tbl %>%
     weekly_late,
     by = c("purchase_yearweek", "product_category")
   ) %>% 
+  dplyr::mutate(late_proportion = tidyr::replace_na(late_proportion, 0)) %>% 
   dplyr::arrange(product_category, purchase_yearweek) %>% 
   dplyr::group_by(product_category) %>% 
   dplyr::mutate(
@@ -461,6 +464,98 @@ pred_category <- product_tbl %>%
   dplyr::ungroup()
 
 pred_category
+```
+
+```{r}
+pred_category_tbl <- pred_category %>% 
+  dplyr::arrange(product_category, purchase_yearweek) %>% 
+  dplyr::group_by(product_category) %>% 
+  dplyr::mutate(
+    pred_date = dplyr::lead(purchase_yearweek, n = 1),
+    future_revenue = dplyr::lead(total_revenue, n = 1) # Adding the future revenue to each row so that the model knows what the actual result was so that he can learn the behaviour
+  ) %>% 
+  tidyr::drop_na(pred_date) %>% 
+  dplyr::ungroup()
+
+pred_category_tbl
+```
+
+```{r}
+# Sampling
+split_data <- pred_category_tbl %>% 
+  rsample::initial_time_split(prop = 0.7)
+
+training_data <- rsample::training(split_data)
+testing_data <- rsample::testing(split_data)
+
+# Features Engineering
+recipe_pipeline <- 
+  recipes::recipe(future_revenue ~ ., data = training_data) %>% 
+  recipes::step_rm(purchase_yearweek, pred_date, product_category) %>% 
+  recipes::step_normalize(all_numeric_predictors()) %>% 
+  recipes::prep()
+
+training_baked <- recipes::bake(recipe_pipeline, training_data)
+testing_baked <- recipes::bake(recipe_pipeline, testing_data)
+
+
+# Modeling - Linear Regression
+model_lm <-
+  parsnip::linear_reg(mode = "regression") %>% 
+  parsnip::set_engine("lm") %>% 
+  parsnip::fit(future_revenue ~ ., data = training_baked)
+
+# Predicting
+predicted_lm <- model_lm %>% 
+  stats::predict(new_data = testing_baked) %>% 
+  dplyr::bind_cols(testing_data %>% dplyr::select(product_category, purchase_yearweek, future_revenue))
+
+# Metrics
+tidy_lm <- parsnip::tidy(model_lm) %>% 
+  gt::gt() %>% 
+  gt::fmt_percent(columns = matches("std.error"), decimals = 2)
+
+glance_lm <- parsnip::glance(model_lm) %>% 
+  gt::gt() %>% 
+  gt::fmt_percent(columns = matches("r.squared|adj.r.squared"), decimals = 2)
+
+yardstick_lm <- predicted_lm %>% 
+  yardstick::metrics(truth = future_revenue, estimate = .pred) %>% 
+  dplyr::arrange(.metric) %>% 
+  gt::gt() %>% 
+  gt::fmt_percent(columns = matches(".estimate"), decimals = 2)
+```
+
+```{r}
+yardstick_lm
+glance_lm
+```
+
+```{r}
+multi_regression <- function(data_table){
+  dependent <- names(data_table)[2] # This is what we're trying to predict. The y
+  independents <- names(data_table)[-(1:2)] # The predictors
+  
+  regression_models <- dplyr::tibble(model = "") # Created an empty table so I can add to it later
+  
+  for (i in 1:length(independents)){
+    betas <- paste(independents[1:i], collapse = "+")
+    regression_models[i, 1] <- glue::glue("{dependent} ~ {betas}")
+  }
+  
+  regression_models <- regression_models %>% 
+    dplyr::mutate(
+      regression = purrr::map(model, ~stats::lm(stats::as.formula(.x), data = data_table)),
+      statistics = purrr::map(regression, broom::glance)
+    ) %>% 
+    tidyr::unnest(statistics) %>% 
+    dplyr::select(1:4, p.value) %>% 
+    dplyr::mutate_if(is.numeric, round, 3)
+  
+  return(regression_models)
+}
+
+multi_regression(return_wide)
 ```
 
 ## Predict Weekly Category Order Volume
