@@ -24,6 +24,12 @@ library(patchwork)
 library(slider)
 library(tidymodels)
 library(rsample)
+library(rpart.plot)
+library(gt)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
 ```
 
 ```{r}
@@ -293,7 +299,9 @@ product_tbl <- products %>%
   dplyr::group_by(product_category_name_english) %>% 
   dplyr::select(-product_category_name) %>% 
   dplyr::rename(product_category = product_category_name_english)
+```
 
+```{r}
 product_tbl
 ```
 
@@ -462,7 +470,9 @@ pred_category <- product_tbl %>%
   ) %>% 
   tidyr::drop_na(lag_revenue) %>% 
   dplyr::ungroup()
+```
 
+```{r}
 pred_category
 ```
 
@@ -475,144 +485,547 @@ pred_category_tbl <- pred_category %>%
     future_revenue = dplyr::lead(total_revenue, n = 1) # Adding the future revenue to each row so that the model knows what the actual result was so that he can learn the behaviour
   ) %>% 
   tidyr::drop_na(pred_date) %>% 
-  dplyr::ungroup()
-
-pred_category_tbl
+  dplyr::ungroup() %>% 
+  dplyr::select(
+    product_category,
+    purchase_yearweek,
+    pred_date,
+    future_revenue,
+    total_revenue,
+    lag_revenue,
+    total_sellers,
+    avg_reviews,
+    late_proportion,
+    rolling_sd4,
+    rolling_mean4
+  )
 ```
 
 ```{r}
+pred_category_tbl
+```
+
+### Predictors' Correlation Matrix
+
+```{r}
+pred_category_tbl %>% 
+  dplyr::select(-c(1:4)) %>% 
+stats::cor(use = "complete.obs") %>% 
+  corrplot::corrplot(
+    method = "color",
+    type = "upper",
+    tl.col = "black",
+    tl.srt = 45,
+    order= "hclust",
+    addCoef.col = "black"
+  )
+```
+
+```{r}
+car::vif(
+  stats::lm(
+    future_revenue ~ total_revenue + lag_revenue + total_sellers + avg_reviews + late_proportion + rolling_sd4 + rolling_mean4,
+    data = pred_category_tbl
+    )
+  ) %>% 
+  tibble::enframe(name = "Predictor", value = "VIF") %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "VIF Table") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  )
+```
+
+The correlation matrix and the VIF table above shows strong correlation between some of the predictors. Therefore, to avoid multicollinearity we are going to use PCA.
+
+### Linear Regression Model
+
+```{r}
+set.seed(123)
+
+dependent <- names(pred_category_tbl)[4] # This is what we're trying to predict. The y
+independents <- names(pred_category_tbl)[-(1:4)] # The predictors
+
+regression_models <- dplyr::tibble(model = "") # Created an empty table so I can add to it later
+
+
+for (i in 1:length(independents)){
+  betas <- paste(independents[1:i], collapse = "+")
+  regression_models[i, 1] <- glue::glue("{dependent} ~ {betas}")
+}
+
+
 # Sampling
 split_data <- pred_category_tbl %>% 
   rsample::initial_time_split(prop = 0.7)
 
 training_data <- rsample::training(split_data)
 testing_data <- rsample::testing(split_data)
+```
 
-# Features Engineering
-recipe_pipeline <- 
-  recipes::recipe(future_revenue ~ ., data = training_data) %>% 
-  recipes::step_rm(purchase_yearweek, pred_date, product_category) %>% 
+```{r}
+pca_results <- dplyr::tibble()
+
+
+for (i in 1:7){
+  # Creating the PCA model formula
+  betas <- paste(as.character(paste0("PC", seq(1, i))), collapse = "+")
+  pca_formula <- as.formula(glue::glue("{dependent} ~ {betas}"))
+  
+  # PCA Feature Engineering
+  pca_recipe <- recipes::recipe(
+    future_revenue ~ total_revenue + lag_revenue + total_sellers + avg_reviews + late_proportion + rolling_sd4 + rolling_mean4,
+    data = training_data
+  ) %>% 
+    recipes::step_normalize(all_numeric_predictors()) %>% 
+    recipes::step_pca(recipes::all_numeric_predictors(), num_comp = i) %>% 
+    recipes::prep(training = training_data)
+  
+  training_baked_pca <- recipes::bake(pca_recipe, new_data = training_data)
+  testing_baked_pca <- recipes::bake(pca_recipe, new_data = testing_data)
+  
+  # PCA Modeling - Linear Regression
+  model_lm_pca <-
+    parsnip::linear_reg(mode = "regression") %>% 
+    parsnip::set_engine("lm") %>% 
+    parsnip::fit(pca_formula, data = training_baked_pca)
+  
+  # PCA Predicting
+  predicted_lm_pca <- model_lm_pca %>% 
+    stats::predict(new_data = testing_baked_pca) %>% 
+    dplyr::bind_cols(future_revenue = testing_baked_pca %>% dplyr::select(future_revenue))
+  
+  # Metrics
+  glance_lm_pca <- parsnip::glance(model_lm_pca) %>% 
+    dplyr::select(1:5)
+  
+  yardstick_lm_pca <- predicted_lm_pca %>% 
+    yardstick::metrics(truth = future_revenue, estimate = .pred) %>% 
+    dplyr::select(.metric, .estimate) %>% 
+    tidyr::pivot_wider(
+      names_from = .metric,
+      values_from = .estimate
+    )
+  
+  # Saving The Results
+  pca_results <- pca_results %>% 
+    dplyr::bind_rows(
+      dplyr::bind_cols(
+        dplyr::tibble(
+          mode = glue::glue("{dependent} ~ {betas}"),
+          num_comp = i
+        ),
+        glance_lm_pca,
+        yardstick_lm_pca
+      )
+    )
+}
+```
+
+```{r}
+pca_results %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "PCA Linear Regression Table") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  ) %>% 
+  gt::cols_align(align = "left", columns = mode)
+```
+
+```{r}
+# PCA Feature Engineering
+pca_recipe <- recipes::recipe(
+  future_revenue ~ total_revenue + lag_revenue + total_sellers + avg_reviews + late_proportion + rolling_sd4 + rolling_mean4,
+  data = training_data
+) %>% 
   recipes::step_normalize(all_numeric_predictors()) %>% 
-  recipes::prep()
+  recipes::step_pca(recipes::all_numeric_predictors(), num_comp = 5) %>% 
+  recipes::prep(training = training_data)
 
-training_baked <- recipes::bake(recipe_pipeline, training_data)
-testing_baked <- recipes::bake(recipe_pipeline, testing_data)
+training_baked_pca <- recipes::bake(pca_recipe, new_data = training_data)
+testing_baked_pca <- recipes::bake(pca_recipe, new_data = testing_data)
 
-
-# Modeling - Linear Regression
-model_lm <-
+# PCA Modeling - Linear Regression
+model_lm_pca <-
   parsnip::linear_reg(mode = "regression") %>% 
   parsnip::set_engine("lm") %>% 
-  parsnip::fit(future_revenue ~ ., data = training_baked)
+  parsnip::fit(future_revenue ~ ., data = training_baked_pca)
 
-# Predicting
-predicted_lm <- model_lm %>% 
-  stats::predict(new_data = testing_baked) %>% 
-  dplyr::bind_cols(testing_data %>% dplyr::select(product_category, purchase_yearweek, future_revenue))
+# PCA Predicting
+predicted_lm_pca <- model_lm_pca %>% 
+  stats::predict(new_data = testing_baked_pca) %>% 
+  dplyr::bind_cols(
+    testing_data %>% 
+      dplyr::select(product_category, purchase_yearweek, pred_date, future_revenue)
+  )
 
 # Metrics
-tidy_lm <- parsnip::tidy(model_lm) %>% 
-  gt::gt() %>% 
-  gt::fmt_percent(columns = matches("std.error"), decimals = 2)
+tidy_lm_pca <- parsnip::tidy(model_lm_pca) %>% 
+  gt::gt()
 
-glance_lm <- parsnip::glance(model_lm) %>% 
+glance_lm_pca <- parsnip::glance(model_lm_pca) %>% 
   gt::gt() %>% 
   gt::fmt_percent(columns = matches("r.squared|adj.r.squared"), decimals = 2)
 
-yardstick_lm <- predicted_lm %>% 
+yardstick_lm_pca <- predicted_lm_pca %>% 
   yardstick::metrics(truth = future_revenue, estimate = .pred) %>% 
-  dplyr::arrange(.metric) %>% 
-  gt::gt() %>% 
-  gt::fmt_percent(columns = matches(".estimate"), decimals = 2)
+  dplyr::arrange(.metric) %>%  
+  dplyr::select(-.estimator) %>% 
+  gt::gt()
+```
+
+```{r, include=FALSE}
+tidy_lm_pca
+glance_lm_pca
+yardstick_lm_pca
+```
+
+```{r, eval=FALSE}
+car::vif(model_lm_pca$fit)
 ```
 
 ```{r}
-yardstick_lm
-glance_lm
-```
-
-```{r}
-multi_regression <- function(data_table){
-  dependent <- names(data_table)[2] # This is what we're trying to predict. The y
-  independents <- names(data_table)[-(1:2)] # The predictors
-  
-  regression_models <- dplyr::tibble(model = "") # Created an empty table so I can add to it later
-  
-  for (i in 1:length(independents)){
-    betas <- paste(independents[1:i], collapse = "+")
-    regression_models[i, 1] <- glue::glue("{dependent} ~ {betas}")
-  }
-  
-  regression_models <- regression_models %>% 
-    dplyr::mutate(
-      regression = purrr::map(model, ~stats::lm(stats::as.formula(.x), data = data_table)),
-      statistics = purrr::map(regression, broom::glance)
-    ) %>% 
-    tidyr::unnest(statistics) %>% 
-    dplyr::select(1:4, p.value) %>% 
-    dplyr::mutate_if(is.numeric, round, 3)
-  
-  return(regression_models)
-}
-
-multi_regression(return_wide)
-```
-
-## Predict Weekly Category Order Volume
-
-```{r}
-pred_orders <- product_tbl %>% 
-  dplyr::left_join(
-    weekly_orders,
-    by = "order_id"
+pca_scree <- training_data %>% 
+  dplyr::select(-c(1:4)) %>% 
+  stats::prcomp(
+    scale = TRUE,
+    center = TRUE,
+    rank = 7
   ) %>% 
-  dplyr::group_by(purchase_yearweek, product_category) %>% 
-  dplyr::summarise(
-    total_orders = dplyr::n_distinct(order_id),
-    total_revenue = sum(price, na.rm = TRUE),
-    avg_order_value = total_revenue / total_orders,
-    total_sellers = dplyr::n_distinct(seller_id),
-    .groups = "drop"
-  ) %>% 
-  dplyr::arrange(product_category, purchase_yearweek) %>% 
-  dplyr::group_by(product_category) %>% 
+  factoextra::fviz_eig(
+    choice = "variance",
+    addlabels = TRUE,
+    ncp = 7
+  )
+
+pca_scree
+```
+
+```{r}
+model_lm <- regression_models %>% 
   dplyr::mutate(
-    lag_orders = dplyr::lag(total_orders, 1),
-    rolling_mean4 = slider::slide_dbl(
-      total_orders,
-      mean,
-      .before = 4,
-      .after = 0,
-      .complete = FALSE
+    recipe_pipeline = purrr::map( # Feature Engineering
+      model,
+      ~ recipes::recipe(stats::as.formula(.x), data = training_data) %>% 
+        recipes::step_normalize(all_numeric_predictors()) %>% 
+        recipes::prep()
     ),
-    rolling_sd4 = slider::slide_dbl(
-      total_orders,
-      sd,
-      .before = 4,
-      .after = 0,
-      .complete = FALSE
+    training_baked = purrr::map(recipe_pipeline, ~ recipes::bake(.x, new_data = training_data)),
+    testing_baked = purrr::map(recipe_pipeline, ~ recipes::bake(.x, new_data = testing_data)),
+    model_lm = purrr::map2( # Modeling - Linear Regression
+      model,
+      training_baked,
+      ~ parsnip::linear_reg(mode = "regression") %>% 
+        parsnip::set_engine("lm") %>% 
+        parsnip::fit(stats::as.formula(.x), data = .y)
+    ),
+    predicted_lm = purrr::map2( # Predicting
+      model_lm,
+      testing_baked,
+      ~ stats::predict(.x, new_data = .y) %>% 
+        dplyr::bind_cols(
+          testing_data %>% 
+            dplyr::select(product_category, purchase_yearweek, pred_date, future_revenue)
+        )
+    ),
+    statistics_1 = purrr::map( # Metric 1
+      model_lm, broom::glance
+      )
+  ) %>% 
+  tidyr::unnest(statistics_1) %>% 
+  dplyr::select(1:11) %>% 
+  dplyr::mutate(
+    statistics_2 = purrr::map( # Metric 2
+      model_lm,
+      parsnip::tidy
+    ),
+    statistics_3 = purrr::map( # Metric 3
+      predicted_lm,
+      ~ yardstick::metrics(.x, truth = future_revenue, estimate = .pred) %>% 
+        dplyr::arrange(.metric)
     )
   ) %>% 
-  tidyr::drop_na() %>% 
-  dplyr::ungroup()
-
-pred_orders
+  dplyr::mutate_if(is.numeric, round, 3) %>% 
+  tidyr::unnest(statistics_3) %>% 
+  tidyr::pivot_wider(
+    names_from = .metric,
+    values_from = .estimate
+  ) %>% 
+  dplyr::select(-.estimator)
 ```
 
-# Weekly Customer Retention Rate
+```{r}
+model_lm
+```
 
-What are the chances that a customer will purchase again
+Based on the results above we can see that $R^2$ and $R^2_{Adjusted}$ on the training data are best on the last model with all the predictors. However, on the testing data, unseen data, the best $R^2$ is the one using the total and lag revenue as predictors. We can also see that it has a better RMSE than the last model in the training dataset.
 
-Predictors:
+### Regression Tree Model
 
-- Lag 1 for whether a customer bought or not
+Since trees split one variable at a time they can handle correlated predictors much better than linear regression.
 
-- Left a comment or not
+```{r}
+# PCA Modeling - Regression Tree
+model_tree_pca <-
+  parsnip::decision_tree(
+    mode = "regression",
+    tree_depth = 5,
+    min_n = 5,
+    cost_complexity = 0.001
+    ) %>% 
+  parsnip::set_engine("rpart") %>% 
+  parsnip::fit(future_revenue ~ ., data = training_baked_pca)
 
-- Average review score
+# PCA Predicting
+predicted_tree_pca <- model_tree_pca %>% 
+  stats::predict(new_data = testing_baked_pca) %>% 
+  dplyr::bind_cols(
+    testing_data %>% 
+      dplyr::select(product_category, purchase_yearweek, pred_date, future_revenue)
+    )
 
-- Was delivery delayed?
+# Metrics
+yardstick_tree_pca <- predicted_tree_pca %>% 
+  yardstick::metrics(truth = future_revenue, estimate = .pred) %>% 
+  dplyr::arrange(.metric) %>% 
+  dplyr::select(-.estimator) %>% 
+  gt::gt()
+```
 
-Target:
+```{r}
+yardstick_tree_pca
+```
 
-- 
+```{r, fig.width= 20, fig.height=8}
+rpart.plot::rpart.plot(
+  model_tree_pca$fit,
+  roundint = FALSE,
+  cex = 1,
+  fallen.leaves = FALSE,
+  extra = "auto",
+  main = "Regression Tree"
+)
+```
+
+```{r}
+tree_grid <- tidyr::expand_grid(
+  tree_depth = c(3, 5, 8, 10),
+  min_n = c(2, 5, 10, 20),
+  cost_complexity = c(0.0001, 0.001, 0.01)
+)
+
+tree_models_grid <- tidyr::crossing(
+  regression_models,
+  tree_grid
+)
+```
+
+```{r}
+model_tree <- tree_models_grid %>% 
+  dplyr::mutate(
+    recipe_pipeline = purrr::map( # Feature Engineering
+      model,
+      ~ recipes::recipe(stats::as.formula(.x), data = training_data) %>% 
+        recipes::step_normalize(all_numeric_predictors()) %>% 
+        recipes::prep()
+    ),
+    training_baked = purrr::map(recipe_pipeline, ~ recipes::bake(.x, new_data = training_data)),
+    testing_baked = purrr::map(recipe_pipeline, ~ recipes::bake(.x, new_data = testing_data)),
+    model_tree = purrr::pmap( # Modeling - Regression Tree
+      list(model, training_baked, tree_depth, min_n, cost_complexity),
+      ~ parsnip::decision_tree(
+        mode = "regression",
+        tree_depth = ..3,
+        min_n = ..4,
+        cost_complexity = ..5
+        ) %>% 
+        parsnip::set_engine("rpart") %>% 
+        parsnip::fit(stats::as.formula(..1), data = ..2)
+    ),
+    predicted_tree = purrr::map2( # Predicting
+      model_tree,
+      testing_baked,
+      ~ stats::predict(.x, new_data = .y) %>% 
+        dplyr::bind_cols(
+          testing_data %>% 
+            dplyr::select(product_category, purchase_yearweek, pred_date, future_revenue)
+        )
+    )
+  ) %>%  
+  dplyr::mutate(
+    statistics_3 = purrr::map(
+      predicted_tree,
+      ~ yardstick::metrics(.x, truth = future_revenue, estimate = .pred) %>% 
+        dplyr::arrange(.metric)
+    )
+  ) %>% 
+  dplyr::mutate_if(is.numeric, round, 3) %>% 
+  tidyr::unnest(statistics_3) %>% 
+  tidyr::pivot_wider(
+    names_from = .metric,
+    values_from = .estimate
+  ) %>% 
+  dplyr::select(-.estimator) %>% 
+  dplyr::arrange(desc(rsq))
+```
+
+```{r}
+model_tree
+```
+
+Looking at the results from the decision tree we can see that the best model is the simplest model
+
+```{r, fig.width= 20, fig.height=8}
+best_tree <- model_tree %>% 
+  dplyr::slice_max(rsq, n = 1)
+
+rpart.plot::rpart.plot(
+  best_tree$model_tree[[1]]$fit,
+  roundint = FALSE,
+  cex = 1,
+  fallen.leaves = FALSE,
+  extra = "auto",
+  main = "Regression Tree"
+)
+```
+
+```{r}
+car::vif(
+  stats::lm(
+    future_revenue ~ total_revenue + lag_revenue,
+    data = pred_category_tbl
+  )
+) %>% 
+  tibble::enframe(name = "Predictor", value = "VIF") %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "VIF Table") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  )
+```
+
+### Random Forest Model
+
+```{r}
+# PCA Modeling - Random Forest
+model_rf_pca <-
+  parsnip::rand_forest(
+    mode = "regression",
+    trees = 750, # 750 different decision trees
+    mtry = 3, # number of variables to randomly select and choosing the best split out of them
+    min_n = 5 # Min number of observations in a leaf or end of a tree branch
+  ) %>% 
+  parsnip::set_engine(
+    "ranger",
+    importance = "impurity" # Using reduction in variance for each split
+  ) %>% 
+  parsnip::fit(future_revenue ~ ., data = training_baked_pca)
+
+# PCA Predicting
+predicted_rf_pca <- model_rf_pca %>% 
+  stats::predict(new_data = testing_baked_pca) %>% 
+  dplyr::bind_cols(
+    testing_data %>% 
+      dplyr::select(product_category, purchase_yearweek, pred_date, future_revenue)
+  )
+
+# Metrics
+yardstick_rf_pca <- predicted_rf_pca %>% 
+  yardstick::metrics(truth = future_revenue, estimate = .pred) %>% 
+  dplyr::arrange(.metric) %>% 
+  dplyr::select(-.estimator) %>% 
+  gt::gt()
+```
+
+```{r}
+yardstick_rf_pca
+```
+
+```{r}
+rf_grid <- tidyr::expand_grid(
+  trees = c(500, 750, 1000),
+  mtry = 1:7,
+  min_n = c(2, 5, 10, 15, 20)
+)
+
+rf_models_grid <- tidyr::crossing(
+  regression_models,
+  rf_grid
+) %>% 
+  dplyr::mutate(
+    n_predictors = stringr::str_count(model, "\\+") + 1
+  ) %>% 
+  dplyr::filter(
+    mtry <= n_predictors
+  )
+```
+
+```{r}
+model_rf <- rf_models_grid %>% 
+  dplyr::mutate(
+    recipe_pipeline = purrr::map( # Feature Engineering
+      model,
+      ~ recipes::recipe(stats::as.formula(.x), data = training_data) %>% 
+        recipes::step_normalize(all_numeric_predictors()) %>% 
+        recipes::prep()
+    ),
+    training_baked = purrr::map(recipe_pipeline, ~ recipes::bake(.x, new_data = training_data)),
+    testing_baked = purrr::map(recipe_pipeline, ~ recipes::bake(.x, new_data = testing_data)),
+    model_rf = purrr::pmap( # Modeling - Random Forest
+      list(model, training_baked, trees, mtry, min_n),
+      ~ parsnip::rand_forest(
+        mode = "regression",
+        trees = ..3,
+        mtry = ..4,
+        min_n = ..5
+      ) %>% 
+        parsnip::set_engine(
+          "ranger",
+          importance = "impurity"
+        ) %>% 
+        parsnip::fit(stats::as.formula(..1), data = ..2)
+    ),
+    predicted_rf = purrr::map2( # Predicting
+      model_rf,
+      testing_baked,
+      ~ stats::predict(.x, new_data = .y) %>% 
+        dplyr::bind_cols(
+          testing_data %>% 
+            dplyr::select(product_category, purchase_yearweek, pred_date, future_revenue)
+        )
+    )
+  ) %>%  
+  dplyr::mutate(
+    statistics_3 = purrr::map(
+      predicted_rf,
+      ~ yardstick::metrics(.x, truth = future_revenue, estimate = .pred) %>% 
+        dplyr::arrange(.metric)
+    )
+  ) %>% 
+  dplyr::mutate_if(is.numeric, round, 3) %>% 
+  tidyr::unnest(statistics_3) %>% 
+  tidyr::pivot_wider(
+    names_from = .metric,
+    values_from = .estimate
+  ) %>% 
+  dplyr::select(-.estimator) %>% 
+  dplyr::arrange(desc(rsq))
+```
+
+```{r}
+model_rf
+```
+
+```{r}
+model_rf %>% 
+  dplyr::slice_head(n = 5) %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "Top 5 Random Forest Results") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  )
+```
