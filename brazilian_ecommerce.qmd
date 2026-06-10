@@ -128,47 +128,19 @@ products
 sellers
 ```
 
-# Things to look at:
+# Executive Summary
 
-- Seasonality of purchases - is there seasonality?
+Olist operates as a critical marketplace integrator in Brazil’s highly competitive e-commerce landscape, connecting small and medium merchants with major national retail channels. Operating this complex, multi-sided marketplace requires precise operational planning, lean logistical coordination, and proactive inventory management.
 
-  - What day of the week sales the most
+This report presents an analytical evaluation of Olist’s transactional ecosystem using historical platform data (olist.sqlite). We focus on two core strategic pillars:
 
-  - What are the best hours of the day for sales
+1.  **Exploratory Data Analysis (EDA):** Decoding overall trajectories and categorical revenue distributions to expose structural platform vulnerabilities.
 
-- Location of purchases
+2.  **Predictive Modeling Framework:** Engineering a robust time-series regression pipeline using `tidymodels` to forecast next-week category revenue ($t+1$), giving Olist and its partner merchants a distinct logistical advantage, hence improving efficiency and profitability.
 
-- Most common type of payment
+# Goal 1: Exploratory Data Analysis and Strategic Findings
 
-- Who is the best seller right now
-
-- Who are we expecting to be the best seller in the future
-
-  - Predicting reviews ratings and sales for each seller to tell us who we think will be the best seller
-
-  - I think we can use both forecasts to help us understand who's the best seller rather than making a decision on which one of the two defines what best is
-
-- What is the best selling product category
-
-  - Predict which category we expect to sell the best next month
-
-  - Factors:
-
-    - Lag revenue
-
-    - Review scores
-
-    - Review comment no comment
-
-    - Rolling SD
-
-    - Rolling mean
-
-    - 
-
-- How many returning customers does each seller has? Does it correlate with their reviews
-
-# Seasonality
+## Finding 1: Olist’s purchase value grew rapidly over time, while seasonality was less clear
 
 ```{r}
 combined_purchase <- orders %>% 
@@ -201,7 +173,7 @@ seasonality_purchase <- combined_purchase %>%
   tsibble::as_tsibble(index = purchase_yearweek)
 ```
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 seas_1 <- seasonality_purchase %>% 
   tsibble::fill_gaps(total_value = 0) %>% 
   ggplot2::autoplot(total_value) +
@@ -250,41 +222,17 @@ seas_3 <- stl_model %>%
 seas_3
 ```
 
-The graph above displays an upward trend in total value of purchases and rejects the idea of seasonality across total value of purchases. The sudden drop in total value in July 2018 arises from the simple reason that the data we possess ends at July 5th, 2018 and not from a drop in purchases.
+The first major finding is that Olist’s weekly purchase value increased substantially over the period under observation, suggesting strong platform growth. Although weekly purchase value fluctuated over time, the STL decomposition shows that the trend component was the dominant pattern in the data. The trend increased steadily through 2017 and reached its highest level around early 2018 before flattening near the end of the dataset.
 
-# Best Seller
+To investigate this, we aggregated the order and payment data by purchase week and calculated the total weekly purchase value. We then applied STL decomposition to separate the time series into three components: trend, seasonal variation, and remainder. This approach helped distinguish long-term growth from repeated seasonal movement and short-term noise.
 
-```{r}
-combined_purchase
-seasonality_purchase
-```
+The decomposition suggests that Olist’s purchase value was more influenced by long-term market growth than by a clear seasonal cycle. The trend panel shows a strong upward movement across most of the period, while the seasonal component is smaller relative to the overall increase in purchase value. Therefore, the main business insight is that Olist was not simply experiencing normal seasonal ups and downs; it was operating in a period of rapid expansion.
 
-```{r}
-sellers_tbl <- sellers %>% 
-  dplyr::left_join(
-    order_items,
-    by = "seller_id"
-  ) %>% 
-  dplyr::group_by(seller_id) %>% 
-  dplyr::summarise(total_price = sum(price))
+The sharp decline at the end of the graph should be interpreted carefully. Since the available dataset ends on July 5, 2018, the final weeks likely contain incomplete transaction data. As a result, the drop near the end of the series is more likely due to the data cutoff than to a real collapse in customer demand.
 
-sellers_tbl
-```
+This finding matters because rapid growth creates operational pressure. If Olist treats every increase or decrease in sales as a seasonal pattern, management may miss the larger issue: the platform needs enough operational capacity to support sustained growth. Olist should therefore focus on scalable improvements such as seller onboarding, payment processing, customer support, and delivery coordination. However, because operational resources are limited, Olist should not treat all product categories equally. The next step is to identify which categories generate the most revenue so that growth planning can focus on the areas with the greatest financial impact.
 
-```{r}
-sellers_tbl %>% 
-  dplyr::arrange(desc(total_price)) %>% 
-  dplyr::slice_head(n = 5) %>% 
-  ggplot2::ggplot(ggplot2::aes(x = seller_id, y = total_price)) +
-  ggplot2::geom_col(ggplot2::aes(fill = seller_id))
-```
-
-# Best Product Category
-
-```{r}
-products %>% 
-  dplyr::filter(is.na(product_category_name) == TRUE)
-```
+## Finding 2: Revenue is concentrated in a small number of product categories
 
 ```{r}
 product_tbl <- products %>% 
@@ -299,18 +247,7 @@ product_tbl <- products %>%
   dplyr::group_by(product_category_name_english) %>% 
   dplyr::select(-product_category_name) %>% 
   dplyr::rename(product_category = product_category_name_english)
-```
 
-```{r}
-product_tbl
-```
-
-```{r}
-product_tbl %>% 
-  dplyr::filter(is.na(product_category) == TRUE)
-```
-
-```{r}
 best_category <- product_tbl %>% 
   dplyr::summarise(
     total_revenue = sum(price, na.rm = TRUE),
@@ -318,35 +255,91 @@ best_category <- product_tbl %>%
     .groups = "drop"
   ) %>% 
   dplyr::arrange(desc(total_revenue))
-
-best_category %>% 
-  dplyr::slice_head(n = 5) %>% 
-  ggplot2::ggplot(ggplot2::aes(x = stats::reorder(product_category, -total_revenue), y = total_revenue, fill = product_category)) +
-  ggplot2::geom_col() +
-  ggplot2::scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
-  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = -25, hjust = -0.01)) +
-  ggplot2::labs(
-    title = "Top 5 Total Revenue by Category",
-    x = "Product Category",
-    y = "Total Revenue",
-    fill = "Product Category"
-  ) +
-  ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5))
 ```
 
-As we can see above, the top five best selling product categories are:
+```{r, eval=FALSE}
+summary(best_category)
+```
 
-1.  Health beauty
-2.  Watches gifts
-3.  Bed bath tables
-4.  Sports leisure
-5.  Computers accessories
+```{r}
+pareto_tbl <- best_category %>% 
+  dplyr::arrange(dplyr::desc(total_revenue)) %>% 
+  dplyr::mutate(
+    revenue_share = total_revenue / sum(total_revenue),
+    cumulative_share = cumsum(revenue_share)
+  ) %>% 
+  dplyr::slice_head(n = 10)
 
-However, the fact that the health beauty category is best seller does not guarantee that it will stay the best seller. Therefore we will use machine learning to predict which category we expect to be the best selling product category next month.
 
-## Predicting Weekly Category Revenue
+pareto_tbl %>% 
+  ggplot2::ggplot(ggplot2::aes(x = reorder(product_category, -total_revenue))) +
+  ggplot2::geom_col(ggplot2::aes(y = total_revenue, fill = product_category), show.legend = FALSE) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      y = cumulative_share * max(total_revenue),
+      group = 1
+    ),
+    color = "red"
+  ) +
+  ggplot2::geom_point(
+    ggplot2::aes(y = cumulative_share * max(total_revenue)),
+    color = "red"
+  ) +
+  ggplot2::geom_text(
+    data = pareto_tbl %>% dplyr::slice_tail(n = 1),
+    ggplot2::aes(
+      y = cumulative_share * max(pareto_tbl$total_revenue),
+      label = paste0(
+        "Cumulative share: ",
+        scales::percent(cumulative_share, accuracy = 0.1)
+      )
+    ),
+    color = "red",
+    hjust = 1,
+    vjust = -1
+  ) +
+  ggplot2::scale_y_continuous(labels = scales::dollar_format(scale_cut = scales::cut_short_scale())) +
+  ggplot2::labs(
+    title = "Revenue Concentration by Product Category",
+    subtitle = "Top 10 categories account for 62.4% of total category revenue",
+    x = "Product Category",
+    y = "Total Revenue"
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    plot.title = ggplot2::element_text(hjust = 0.5),
+    plot.subtitle = ggplot2::element_text(hjust = 0.5)
+  )
+```
 
-Eight orders were identified as "delivered" but lacked a recorded customer delivery date. Since delivery timeliness could not be determined for these observations, they were excluded from the late-delivery analysis. Missing weekly review scores were imputed using the average review score within the corresponding product category. For category-weeks with no observed delivery records, the late-delivery proportion was set to zero.
+The second major finding is that Olist's revenue is highly concentrated among a small number of product categories. Although the dataset contains 72 product categories, the top 10 categories account for 62.4% of total category revenue. This product concentration shows that Olist's marketplace revenue is not evenly distributed across categories. Instead, a relatively small group of categories drives most of the platform's sales.
+
+The chart also shows a clear separation among the highest-revenue categories. Health/beauty, watches/gifts, bed/bath/table, sports/leisure, and computer accessories are the top five revenue-generating categories, and they are the only categories that exceed roughly \$800,000 in total revenue. The higher revenue concentration makes the top five categories especially important from a business perspective because changes in their demand or delivery performance could have a larger effect on total revenue than changes in lower-revenue categories.
+
+To discover this finding, we joined the product, order item, and product category translation tables. Joining the tables allowed us to connect each sold item to an English product category name and calculate total revenue by category using item prices. We then ranked product categories by revenue from highest to lowest and calculated the cumulative revenue share to measure how much total revenue was explained by the largest categories.
+
+This finding matters because revenue concentration creates both opportunities and risks. On the opportunity side, Olist can prioritize high-revenue categories when planning seller support, promotions, inventory preparation, and delivery coordination. Improving performance in these categories is likely to have a meaningful impact on overall revenue. However, concentration also increases risk. If one of the major categories experiences stock shortages, delayed deliveries, or lower customer satisfaction, Olist's overall revenue performance could be affected.
+
+This finding also supports the prediction objective in Goal 2. Since category-level revenue is highly uneven, forecasting next week's revenue by product category can help Olist identify which categories are likely to drive future sales and prepare sellers and logistics partners before demand changes occur.
+
+# Goal 2: Predicting Next-Week Revenue by Product Category
+
+## Business Objective
+
+The business objective for Goal 2 is to predict next week's revenue for each product category. This prediction can help Olist improve operational efficiency by identifying which categories are expected to generate the most sales in the coming week. If Olist can anticipate category-level demand in advance, it can better coordinate with sellers, plan logistics capacity, and reduce the risk of stock shortages or delivery delays in high-revenue categories.
+
+Next week's prediction objective connects directly to the revenue concentration finding from Goal 1. Since a relatively small number of product categories account for a large share of total revenue, forecasting category-level revenue can help Olist focus on the categories most likely to affect overall marketplace performance.
+
+## Data Preparation and Feature Engineering
+
+To build the prediction dataset, we aggregated transactions by product category and purchase week. The target variable was `future_revenue`, representing next week's revenue for the same product category. The `future_revenue` variable was created using a lead function, so each row uses current and past information to predict next week's revenue.
+
+Several predictors were engineered to capture category-level demand and operational conditions. These included current weekly revenue, previous week revenue, the number of active sellers, average review score, late-delivery proportion, four-week rolling average revenue, and four-week rolling revenue volatility. These prediction variables were selected because they describe both demand momentum and operational performance.
+
+We also cleaned missing and inconsistent values before modelling. Eight orders were identified as delivered, but did not have a recorded customer delivery date. Since delivery timeliness could not be determined for these observations, they were excluded from the late-delivery analysis. Missing weekly review scores were imputed using the average review score within the corresponding product category. For category-weeks with no observed delivery records, the late-delivery proportion was set to zero. These decisions allowed us to keep the weekly category-level dataset complete while avoiding misleading late-delivery calculations.
+
+A time-based split was used instead of a random split. The time-based approach means the data were kept in chronological order, with older observations used for training and newer observations for testing. The first 70% of the prepared dataset was used for training, and the remaining 30% was reserved for testing. Because the prepared dataset contained fewer than 10,000 observations, the 70:30 split provided enough data for model training while still leaving a meaningful test set for evaluating forecasting performance.
 
 ```{r}
 weekly_reviews <- order_reviews %>%
@@ -473,10 +466,6 @@ pred_category <- product_tbl %>%
 ```
 
 ```{r}
-pred_category
-```
-
-```{r}
 pred_category_tbl <- pred_category %>% 
   dplyr::arrange(product_category, purchase_yearweek) %>% 
   dplyr::group_by(product_category) %>% 
@@ -502,26 +491,6 @@ pred_category_tbl <- pred_category %>%
 ```
 
 ```{r}
-pred_category_tbl
-```
-
-### Predictors' Correlation Matrix
-
-```{r}
-pred_category_tbl %>% 
-  dplyr::select(-c(1:4)) %>% 
-stats::cor(use = "complete.obs") %>% 
-  corrplot::corrplot(
-    method = "color",
-    type = "upper",
-    tl.col = "black",
-    tl.srt = 45,
-    order= "hclust",
-    addCoef.col = "black"
-  )
-```
-
-```{r}
 car::vif(
   stats::lm(
     future_revenue ~ total_revenue + lag_revenue + total_sellers + avg_reviews + late_proportion + rolling_sd4 + rolling_mean4,
@@ -537,11 +506,9 @@ car::vif(
   )
 ```
 
-The correlation matrix and the VIF table above shows strong correlation between some of the predictors. Therefore, to avoid multicollinearity we are going to use PCA.
-
-### Linear Regression Model
-
 ```{r}
+# Linear Regression Model
+
 set.seed(123)
 
 dependent <- names(pred_category_tbl)[4] # This is what we're trying to predict. The y
@@ -676,7 +643,7 @@ yardstick_lm_pca <- predicted_lm_pca %>%
   gt::gt()
 ```
 
-```{r, include=FALSE}
+```{r}
 tidy_lm_pca
 glance_lm_pca
 yardstick_lm_pca
@@ -760,14 +727,9 @@ model_lm <- regression_models %>%
 model_lm
 ```
 
-Based on the results above we can see that $R^2$ and $R^2_{Adjusted}$ on the training data are best on the last model with all the predictors. However, on the testing data, unseen data, the best $R^2$ is the one using the total and lag revenue as predictors. We can also see that it has a better RMSE than the last model in the training dataset.
+```{r, include=FALSE}
+## PCA Modeling - Regression Tree ##
 
-### Regression Tree Model
-
-Since trees split one variable at a time they can handle correlated predictors much better than linear regression.
-
-```{r}
-# PCA Modeling - Regression Tree
 model_tree_pca <-
   parsnip::decision_tree(
     mode = "regression",
@@ -794,11 +756,11 @@ yardstick_tree_pca <- predicted_tree_pca %>%
   gt::gt()
 ```
 
-```{r}
+```{r, include=FALSE}
 yardstick_tree_pca
 ```
 
-```{r, fig.width= 20, fig.height=8}
+```{r, fig.width= 20, fig.height=8, include=FALSE}
 rpart.plot::rpart.plot(
   model_tree_pca$fit,
   roundint = FALSE,
@@ -875,8 +837,6 @@ model_tree <- tree_models_grid %>%
 model_tree
 ```
 
-Looking at the results from the decision tree we can see that the best model is the simplest model
-
 ```{r, fig.width= 20, fig.height=8}
 best_tree <- model_tree %>% 
   dplyr::slice_max(rsq, n = 1)
@@ -907,10 +867,9 @@ car::vif(
   )
 ```
 
-### Random Forest Model
+```{r, include=FALSE}
+## PCA Modeling - Random Forest ##
 
-```{r}
-# PCA Modeling - Random Forest
 model_rf_pca <-
   parsnip::rand_forest(
     mode = "regression",
@@ -940,7 +899,7 @@ yardstick_rf_pca <- predicted_rf_pca %>%
   gt::gt()
 ```
 
-```{r}
+```{r, include=FALSE}
 yardstick_rf_pca
 ```
 
@@ -960,7 +919,8 @@ rf_models_grid <- tidyr::crossing(
   ) %>% 
   dplyr::filter(
     mtry <= n_predictors
-  )
+  ) %>% 
+  dplyr::slice(1:50)
 ```
 
 ```{r}
@@ -1021,11 +981,196 @@ model_rf
 
 ```{r}
 model_rf %>% 
-  dplyr::slice_head(n = 5) %>% 
+  dplyr::slice_head(n = 5) %>%
+  dplyr::transmute(
+    "Model" = model,
+    "MAE" = mae,
+    "RMSE" = rmse,
+    "R Squared" = rsq,
+    trees,
+    mtry,
+    min_n
+    ) %>%
   gt::gt() %>% 
   gt::tab_header(title = "Top 5 Random Forest Results") %>% 
   gt::tab_style(
     style = cell_fill(color = "indianred"),
     locations = cells_title(groups = "title")
+  ) %>% 
+  
+  gt::fmt_percent(columns = matches("rsq"), decimals = 2)
+```
+
+```{r}
+# Next Week Revenue Forecast Using Best Random Forest Model
+
+# 1. Select best RF model
+best_rf <- model_rf %>% 
+  dplyr::arrange(desc(rsq), rmse, mae) %>% 
+  dplyr::slice_head(n = 1)
+
+# 2. Extract model and recipe
+best_rf_fit <- best_rf$model_rf[[1]]
+best_rf_recipe <- best_rf$recipe_pipeline[[1]]
+
+# 3. Get latest available week for each category
+forecast_data <- pred_category %>% 
+  dplyr::arrange(product_category, purchase_yearweek) %>% 
+  dplyr::group_by(product_category) %>% 
+  dplyr::slice_tail(n = 1) %>% 
+  dplyr::ungroup() %>% 
+  dplyr::mutate(
+    pred_date = purchase_yearweek + 1
+  )
+
+# 4. Bake new forecasting data
+forecast_baked <- recipes::bake(best_rf_recipe, new_data = forecast_data)
+
+# 5. Forecast next week's revenue
+forecast_results <- best_rf_fit %>% 
+  stats::predict(new_data = forecast_baked) %>% 
+  dplyr::bind_cols(
+    forecast_data %>% 
+      dplyr::select(product_category, purchase_yearweek, pred_date)
+  ) %>% 
+  dplyr::rename(
+    forecasted_revenue = .pred
+  ) %>% 
+  dplyr::arrange(desc(forecasted_revenue)) %>% 
+  dplyr::select(product_category, purchase_yearweek, pred_date, forecasted_revenue)
+```
+
+```{r}
+forecast_results
+```
+
+```{r}
+forecast_results %>% 
+  dplyr::slice_head(n = 10) %>% 
+  dplyr::rename(
+    "Product Category" = product_category,
+    "Current Date" = purchase_yearweek,
+    "Forecasted Date" = pred_date,
+    "Forecasted Revenue" = forecasted_revenue
+  ) %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "Top 10 Predicted Product Categories by Next Week Revenue") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  ) %>% 
+  gt::fmt_currency(columns = `Forecasted Revenue`)
+```
+
+```{r}
+pareto_forecast_tbl <- forecast_results %>% 
+  dplyr::arrange(dplyr::desc(forecasted_revenue)) %>% 
+  dplyr::mutate(
+    revenue_share = forecasted_revenue / sum(forecasted_revenue),
+    cumulative_share = cumsum(revenue_share)
+  ) %>% 
+  dplyr::slice_head(n = 10)
+
+
+pareto_forecast_tbl %>% 
+  ggplot2::ggplot(ggplot2::aes(x = reorder(product_category, -forecasted_revenue))) +
+  ggplot2::geom_col(ggplot2::aes(y = forecasted_revenue, fill = product_category), show.legend = FALSE) +
+  ggplot2::geom_line(
+    ggplot2::aes(
+      y = cumulative_share * max(forecasted_revenue),
+      group = 1
+    ),
+    color = "red"
+  ) +
+  ggplot2::geom_point(
+    ggplot2::aes(y = cumulative_share * max(forecasted_revenue)),
+    color = "red"
+  ) +
+  ggplot2::geom_text(
+    data = pareto_forecast_tbl %>% dplyr::slice_tail(n = 1),
+    ggplot2::aes(
+      y = cumulative_share * max(pareto_forecast_tbl$forecasted_revenue),
+      label = paste0(
+        "Cumulative share: ",
+        scales::percent(cumulative_share, accuracy = 0.1)
+      )
+    ),
+    color = "red",
+    hjust = 1,
+    vjust = -1
+  ) +
+  ggplot2::scale_y_continuous(labels = scales::dollar_format(scale_cut = scales::cut_short_scale())) +
+  ggplot2::labs(
+    title = "Next Week's Forecasted Revenue Concentration by Product Category",
+    subtitle = "Top 10 categories account for 52% of total category revenue",
+    x = "Product Category",
+    y = "Total Revenue"
+  ) +
+  ggplot2::theme_minimal() +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+    plot.title = ggplot2::element_text(hjust = 0.5),
+    plot.subtitle = ggplot2::element_text(hjust = 0.5)
+  )
+```
+
+## Models Tested
+
+We compared several model types to determine which approach best predicted next-week category revenue. For each model type, we tested different predictor combinations and, when applicable, adjusted model parameters to improve forecasting performance.
+
+First, we tested linear regression models using different combinations of predictors. Linear regression was useful as a baseline model because it is easy to interpret and indicates whether revenue can be predicted by a mostly linear relationship.
+
+Second, we tested PCA-based linear regression. The correlation matrix and VIF results indicated that some predictors were strongly correlated, particularly revenue-based variables such as current revenue, lagged revenue, and rolling average revenue. PCA was used to reduce multicollinearity by transforming the original predictors into principal components. Breaking the prediction variables into principal components enabled us to test whether a lower-dimensional representation of the data could improve predictive performance.
+
+Third, we tested regression tree models. Regression trees are useful because they can capture non-linear relationships and interactions between predictors. Unlike linear regression, they do not require the relationship between predictors and revenue to be strictly linear. The regression tree models were tuned by changing parameters such as tree depth and the minimum number of observations required in a terminal node.
+
+Finally, we tested random forest models. Random forests improve on single decision trees by building many trees and averaging their predictions. The averaging method generally reduces overfitting and produces more stable predictions. The random forest models were tuned by changing the number of trees, the number of predictors considered at each split, and the minimum number of observations required in a terminal node.
+
+## Model Evaluation and Selection
+
+The models were evaluated on the testing set using RMSE, MAE, and R-squared. RMSE and MAE measure prediction error, while R-squared measures how much variation in future revenue the model explains on unseen data.
+
+The random forest model achieved the best overall test performance. It achieved the highest testing R-squared and a lower prediction error than the other model types. The high R-squared and low prediction error suggest that the random forest better captured the non-linear relationships and interactions among the predictors, including the combined effect of current revenue, lagged revenue, rolling-average revenue, and delivery performance on next-week revenue.
+
+Based on the final comparison, the selected model was the best-performing random forest model. This model was then used to generate the next-week revenue forecast for each product category.
+
+## Final Forecast and Business Implications
+
+The final random forest model was used to forecast next-week revenue by product category. The forecasted results showed which categories are expected to generate the highest revenue in the next period. The forecasted revenue gives Olist a practical tool for short-term operational planning.
+
+From a business perspective, the model can support three main decisions. First, Olist can use the forecast to identify high-demand categories before the demand occurs. Knowing high-demand categories in advance allows the company to communicate with sellers and encourage them to prepare sufficient inventory. Second, Olist can use the forecast to coordinate delivery capacity for categories expected to generate higher order volume. Third, management can use the forecast to monitor whether the same high-revenue categories from Goal 1 are expected to continue driving revenue in the near future.
+
+The model should not be interpreted as a perfect prediction system. Instead, it should be used as an early warning tool. If the model predicts that a category's revenue will increase next week, Olist can investigate whether sellers and logistics partners are prepared. If the model predicts lower revenue, Olist can avoid over-allocating resources to that category. Therefore, predicting next week's revenue for each category helps improve efficiency while still supporting customer satisfaction.
+
+# Appendix
+
+## Data Preparation
+
+**The Table**
+
+```{r}
+pred_category_tbl %>% 
+  dplyr::slice_head(n = 10) %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "The Prediction Category Table") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  )
+```
+
+**Predictor's Correlation Matrix**
+
+```{r}
+pred_category_tbl %>% 
+  dplyr::select(-c(1:4)) %>% 
+  stats::cor(use = "complete.obs") %>% 
+  corrplot::corrplot(
+    method = "color",
+    type = "upper",
+    tl.col = "black",
+    tl.srt = 45,
+    order= "hclust",
+    addCoef.col = "black"
   )
 ```
