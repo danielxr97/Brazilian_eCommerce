@@ -1,11 +1,12 @@
 ---
 title: "The Brazilian eCommerce"
 author: Daniel Rabi and Jaswinder Brar
-date: June 10, 2026
-format: html
+date: June 11, 2026
+format: pdf
 editor: visual
-embed-resources: TRUE
+#embed-resources: TRUE
 toc: TRUE
+#output-file: index
 
 echo: FALSE
 message: FALSE
@@ -491,22 +492,6 @@ pred_category_tbl <- pred_category %>%
 ```
 
 ```{r}
-car::vif(
-  stats::lm(
-    future_revenue ~ total_revenue + lag_revenue + total_sellers + avg_reviews + late_proportion + rolling_sd4 + rolling_mean4,
-    data = pred_category_tbl
-    )
-  ) %>% 
-  tibble::enframe(name = "Predictor", value = "VIF") %>% 
-  gt::gt() %>% 
-  gt::tab_header(title = "VIF Table") %>% 
-  gt::tab_style(
-    style = cell_fill(color = "indianred"),
-    locations = cells_title(groups = "title")
-  )
-```
-
-```{r}
 # Linear Regression Model
 
 set.seed(123)
@@ -580,7 +565,7 @@ for (i in 1:7){
     dplyr::bind_rows(
       dplyr::bind_cols(
         dplyr::tibble(
-          mode = glue::glue("{dependent} ~ {betas}"),
+          model = glue::glue("{dependent} ~ {betas}"),
           num_comp = i
         ),
         glance_lm_pca,
@@ -588,17 +573,6 @@ for (i in 1:7){
       )
     )
 }
-```
-
-```{r}
-pca_results %>% 
-  gt::gt() %>% 
-  gt::tab_header(title = "PCA Linear Regression Table") %>% 
-  gt::tab_style(
-    style = cell_fill(color = "indianred"),
-    locations = cells_title(groups = "title")
-  ) %>% 
-  gt::cols_align(align = "left", columns = mode)
 ```
 
 ```{r}
@@ -641,33 +615,6 @@ yardstick_lm_pca <- predicted_lm_pca %>%
   dplyr::arrange(.metric) %>%  
   dplyr::select(-.estimator) %>% 
   gt::gt()
-```
-
-```{r}
-tidy_lm_pca
-glance_lm_pca
-yardstick_lm_pca
-```
-
-```{r, eval=FALSE}
-car::vif(model_lm_pca$fit)
-```
-
-```{r}
-pca_scree <- training_data %>% 
-  dplyr::select(-c(1:4)) %>% 
-  stats::prcomp(
-    scale = TRUE,
-    center = TRUE,
-    rank = 7
-  ) %>% 
-  factoextra::fviz_eig(
-    choice = "variance",
-    addlabels = TRUE,
-    ncp = 7
-  )
-
-pca_scree
 ```
 
 ```{r}
@@ -723,10 +670,6 @@ model_lm <- regression_models %>%
   dplyr::select(-.estimator)
 ```
 
-```{r}
-model_lm
-```
-
 ```{r, include=FALSE}
 ## PCA Modeling - Regression Tree ##
 
@@ -754,10 +697,6 @@ yardstick_tree_pca <- predicted_tree_pca %>%
   dplyr::arrange(.metric) %>% 
   dplyr::select(-.estimator) %>% 
   gt::gt()
-```
-
-```{r, include=FALSE}
-yardstick_tree_pca
 ```
 
 ```{r, fig.width= 20, fig.height=8, include=FALSE}
@@ -833,40 +772,6 @@ model_tree <- tree_models_grid %>%
   dplyr::arrange(desc(rsq))
 ```
 
-```{r}
-model_tree
-```
-
-```{r, fig.width= 20, fig.height=8}
-best_tree <- model_tree %>% 
-  dplyr::slice_max(rsq, n = 1)
-
-rpart.plot::rpart.plot(
-  best_tree$model_tree[[1]]$fit,
-  roundint = FALSE,
-  cex = 1,
-  fallen.leaves = FALSE,
-  extra = "auto",
-  main = "Regression Tree"
-)
-```
-
-```{r}
-car::vif(
-  stats::lm(
-    future_revenue ~ total_revenue + lag_revenue,
-    data = pred_category_tbl
-  )
-) %>% 
-  tibble::enframe(name = "Predictor", value = "VIF") %>% 
-  gt::gt() %>% 
-  gt::tab_header(title = "VIF Table") %>% 
-  gt::tab_style(
-    style = cell_fill(color = "indianred"),
-    locations = cells_title(groups = "title")
-  )
-```
-
 ```{r, include=FALSE}
 ## PCA Modeling - Random Forest ##
 
@@ -897,10 +802,6 @@ yardstick_rf_pca <- predicted_rf_pca %>%
   dplyr::arrange(.metric) %>% 
   dplyr::select(-.estimator) %>% 
   gt::gt()
-```
-
-```{r, include=FALSE}
-yardstick_rf_pca
 ```
 
 ```{r}
@@ -976,32 +877,6 @@ model_rf <- rf_models_grid %>%
 ```
 
 ```{r}
-model_rf
-```
-
-```{r}
-model_rf %>% 
-  dplyr::slice_head(n = 5) %>%
-  dplyr::transmute(
-    "Model" = model,
-    "MAE" = mae,
-    "RMSE" = rmse,
-    "R Squared" = rsq,
-    trees,
-    mtry,
-    min_n
-    ) %>%
-  gt::gt() %>% 
-  gt::tab_header(title = "Top 5 Random Forest Results") %>% 
-  gt::tab_style(
-    style = cell_fill(color = "indianred"),
-    locations = cells_title(groups = "title")
-  ) %>% 
-  
-  gt::fmt_percent(columns = matches("rsq"), decimals = 2)
-```
-
-```{r}
 # Next Week Revenue Forecast Using Best Random Forest Model
 
 # 1. Select best RF model
@@ -1040,27 +915,63 @@ forecast_results <- best_rf_fit %>%
   dplyr::select(product_category, purchase_yearweek, pred_date, forecasted_revenue)
 ```
 
+## Models Tested
+
+We compared several model types to determine which approach best predicted next-week category revenue. For each model type, we tested different predictor combinations and, when applicable, adjusted model parameters to improve forecasting performance.
+
+First, we tested linear regression models using different combinations of predictors. Linear regression was useful as a baseline model because it is easy to interpret and indicates whether revenue can be predicted by a mostly linear relationship.
+
 ```{r}
-forecast_results
+pred_category_tbl %>% 
+  dplyr::select(-c(1:4)) %>% 
+  stats::cor(use = "complete.obs") %>% 
+  corrplot::corrplot(
+    method = "color",
+    type = "upper",
+    tl.col = "black",
+    tl.srt = 45,
+    order= "hclust",
+    addCoef.col = "black"
+  )
 ```
 
 ```{r}
-forecast_results %>% 
-  dplyr::slice_head(n = 10) %>% 
-  dplyr::rename(
-    "Product Category" = product_category,
-    "Current Date" = purchase_yearweek,
-    "Forecasted Date" = pred_date,
-    "Forecasted Revenue" = forecasted_revenue
-  ) %>% 
+car::vif(
+  stats::lm(
+    future_revenue ~ total_revenue + lag_revenue + total_sellers + avg_reviews + late_proportion + rolling_sd4 + rolling_mean4,
+    data = pred_category_tbl
+  )
+) %>% 
+  tibble::enframe(name = "Predictor", value = "VIF") %>% 
   gt::gt() %>% 
-  gt::tab_header(title = "Top 10 Predicted Product Categories by Next Week Revenue") %>% 
+  gt::tab_header(title = "VIF Table") %>% 
   gt::tab_style(
     style = cell_fill(color = "indianred"),
     locations = cells_title(groups = "title")
-  ) %>% 
-  gt::fmt_currency(columns = `Forecasted Revenue`)
+  )
 ```
+
+Second, we tested PCA-based linear regression. The correlation matrix and VIF results indicated that some predictors were strongly correlated, particularly revenue-based variables such as current revenue, lagged revenue, and rolling average revenue. PCA was used to reduce multicollinearity by transforming the original predictors into principal components. Breaking the prediction variables into principal components enabled us to test whether a lower-dimensional representation of the data could improve predictive performance.
+
+Third, we tested regression tree models. Regression trees are useful because they can capture non-linear relationships and interactions between predictors. Unlike linear regression, they do not require the relationship between predictors and revenue to be strictly linear. The regression tree models were tuned by changing parameters such as tree depth and the minimum number of observations required in a terminal node.
+
+Finally, we tested random forest models. Random forests improve on single decision trees by building many trees and averaging their predictions. The averaging method generally reduces overfitting and produces more stable predictions. The random forest models were tuned by changing the number of trees, the number of predictors considered at each split, and the minimum number of observations required in a terminal node.
+
+## Model Evaluation and Selection
+
+The models were evaluated on the testing set using RMSE, MAE, and R-squared. RMSE and MAE measure prediction error, while R-squared measures how much variation in future revenue the model explains on unseen data.
+
+The random forest model achieved the best overall test performance. It achieved the highest testing R-squared and a lower prediction error than the other model types. The high R-squared and low prediction error suggest that the random forest better captured the non-linear relationships and interactions among the predictors, including the combined effect of current revenue, lagged revenue, rolling-average revenue, and delivery performance on next-week revenue.
+
+Based on the final comparison, the selected model was the best-performing random forest model. This model was then used to generate the next-week revenue forecast for each product category.
+
+## Final Forecast and Business Implications
+
+The final random forest model was used to forecast next-week revenue by product category. The forecasted results showed which categories are expected to generate the highest revenue in the next period. The forecasted revenue gives Olist a practical tool for short-term operational planning.
+
+From a business perspective, the model can support three main decisions. First, Olist can use the forecast to identify high-demand categories before the demand occurs. Knowing high-demand categories in advance allows the company to communicate with sellers and encourage them to prepare sufficient inventory. Second, Olist can use the forecast to coordinate delivery capacity for categories expected to generate higher order volume. Third, management can use the forecast to monitor whether the same high-revenue categories from Goal 1 are expected to continue driving revenue in the near future.
+
+The model should not be interpreted as a perfect prediction system. Instead, it should be used as an early warning tool. If the model predicts that a category's revenue will increase next week, Olist can investigate whether sellers and logistics partners are prepared. If the model predicts lower revenue, Olist can avoid over-allocating resources to that category. Therefore, predicting next week's revenue for each category helps improve efficiency while still supporting customer satisfaction.
 
 ```{r}
 pareto_forecast_tbl <- forecast_results %>% 
@@ -1114,63 +1025,205 @@ pareto_forecast_tbl %>%
   )
 ```
 
-## Models Tested
-
-We compared several model types to determine which approach best predicted next-week category revenue. For each model type, we tested different predictor combinations and, when applicable, adjusted model parameters to improve forecasting performance.
-
-First, we tested linear regression models using different combinations of predictors. Linear regression was useful as a baseline model because it is easy to interpret and indicates whether revenue can be predicted by a mostly linear relationship.
-
-Second, we tested PCA-based linear regression. The correlation matrix and VIF results indicated that some predictors were strongly correlated, particularly revenue-based variables such as current revenue, lagged revenue, and rolling average revenue. PCA was used to reduce multicollinearity by transforming the original predictors into principal components. Breaking the prediction variables into principal components enabled us to test whether a lower-dimensional representation of the data could improve predictive performance.
-
-Third, we tested regression tree models. Regression trees are useful because they can capture non-linear relationships and interactions between predictors. Unlike linear regression, they do not require the relationship between predictors and revenue to be strictly linear. The regression tree models were tuned by changing parameters such as tree depth and the minimum number of observations required in a terminal node.
-
-Finally, we tested random forest models. Random forests improve on single decision trees by building many trees and averaging their predictions. The averaging method generally reduces overfitting and produces more stable predictions. The random forest models were tuned by changing the number of trees, the number of predictors considered at each split, and the minimum number of observations required in a terminal node.
-
-## Model Evaluation and Selection
-
-The models were evaluated on the testing set using RMSE, MAE, and R-squared. RMSE and MAE measure prediction error, while R-squared measures how much variation in future revenue the model explains on unseen data.
-
-The random forest model achieved the best overall test performance. It achieved the highest testing R-squared and a lower prediction error than the other model types. The high R-squared and low prediction error suggest that the random forest better captured the non-linear relationships and interactions among the predictors, including the combined effect of current revenue, lagged revenue, rolling-average revenue, and delivery performance on next-week revenue.
-
-Based on the final comparison, the selected model was the best-performing random forest model. This model was then used to generate the next-week revenue forecast for each product category.
-
-## Final Forecast and Business Implications
-
-The final random forest model was used to forecast next-week revenue by product category. The forecasted results showed which categories are expected to generate the highest revenue in the next period. The forecasted revenue gives Olist a practical tool for short-term operational planning.
-
-From a business perspective, the model can support three main decisions. First, Olist can use the forecast to identify high-demand categories before the demand occurs. Knowing high-demand categories in advance allows the company to communicate with sellers and encourage them to prepare sufficient inventory. Second, Olist can use the forecast to coordinate delivery capacity for categories expected to generate higher order volume. Third, management can use the forecast to monitor whether the same high-revenue categories from Goal 1 are expected to continue driving revenue in the near future.
-
-The model should not be interpreted as a perfect prediction system. Instead, it should be used as an early warning tool. If the model predicts that a category's revenue will increase next week, Olist can investigate whether sellers and logistics partners are prepared. If the model predicts lower revenue, Olist can avoid over-allocating resources to that category. Therefore, predicting next week's revenue for each category helps improve efficiency while still supporting customer satisfaction.
+```{r}
+forecast_results %>% 
+  dplyr::slice_head(n = 10) %>% 
+  dplyr::transmute(
+    "Product Category" = product_category,
+    "Current Date" = as.character(purchase_yearweek),
+    "Forecasted Date" = as.character(pred_date),
+    "Forecasted Revenue" = forecasted_revenue
+  ) %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "Top 10 Predicted Product Categories by Next Week Revenue") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  ) %>% 
+  gt::fmt_currency(columns = `Forecasted Revenue`)
+```
 
 # Appendix
 
 ## Data Preparation
 
-**The Table**
+### The Table
 
 ```{r}
 pred_category_tbl %>% 
+  dplyr::transmute(
+    "Product Category" = product_category,
+    "Current Date" = as.character(purchase_yearweek),
+    "Predicted Date" = as.character(pred_date),
+    "Future Revenue" = future_revenue,
+    "Revenue" = total_revenue,
+    "Lag Revenue" = lag_revenue,
+    "Total Sellers" = total_sellers,
+    "Avg.Review" = avg_reviews,
+    "Late Proportion" = late_proportion,
+    "4 Week Rolling SD" = rolling_sd4,
+    "4 Week Rolling Avg." = rolling_mean4
+  ) %>% 
   dplyr::slice_head(n = 10) %>% 
   gt::gt() %>% 
-  gt::tab_header(title = "The Prediction Category Table") %>% 
+  gt::tab_header(title = "The Prediction Category Table", subtitle = "First 10 Observations") %>% 
   gt::tab_style(
     style = cell_fill(color = "indianred"),
-    locations = cells_title(groups = "title")
+    locations = cells_title(groups = c("title", "subtitle"))
   )
 ```
 
-**Predictor's Correlation Matrix**
+## Linear Regression
+
+### PCA Model Table
 
 ```{r}
-pred_category_tbl %>% 
+pca_results %>% 
+  dplyr::transmute(
+    "Model" = model,
+    "MAE" = mae,
+    "RMSE" = rmse,
+    "R Squared" = rsq,
+    "Adjusted R Squared" = adj.r.squared,
+    num_comp
+  ) %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "PCA Linear Regression Table") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  ) %>% 
+  gt::cols_align(align = "left", columns = `Model`) %>% 
+  gt::fmt_percent(columns = matches("R Squared"), decimals = 2)
+```
+
+### PCA Metric 1
+
+```{r}
+tidy_lm_pca
+```
+
+### PCA Metric 2
+
+```{r}
+glance_lm_pca
+```
+
+### PCA Metric 3
+
+```{r}
+yardstick_lm_pca
+```
+
+### PCA VIF Proof
+
+```{r}
+car::vif(model_lm_pca$fit)
+```
+
+### PCA Scree Plot
+
+```{r}
+pca_scree <- training_data %>% 
   dplyr::select(-c(1:4)) %>% 
-  stats::cor(use = "complete.obs") %>% 
-  corrplot::corrplot(
-    method = "color",
-    type = "upper",
-    tl.col = "black",
-    tl.srt = 45,
-    order= "hclust",
-    addCoef.col = "black"
+  stats::prcomp(
+    scale = TRUE,
+    center = TRUE,
+    rank = 7
+  ) %>% 
+  factoextra::fviz_eig(
+    choice = "variance",
+    addlabels = TRUE,
+    ncp = 7
   )
+
+pca_scree
+```
+
+### Non-PCA Model Table
+
+```{r}
+model_lm %>% 
+  dplyr::transmute(
+    "Model" = model,
+    "MAE" = mae,
+    "RMSE" = rmse,
+    "R Squared" = rsq,
+    "Adjusted R Squared" = adj.r.squared
+  ) %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "Non-PCA Linear Regression Table") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  ) %>% 
+  gt::cols_align(align = "left", columns = `Model`) %>% 
+  gt::fmt_percent(columns = matches("R Squared"), decimals = 2)
+```
+
+## Regression Tree
+
+### The Table
+
+```{r}
+model_tree %>% 
+  dplyr::transmute(
+    "Model" = model,
+    "MAE" = mae,
+    "RMSE" = rmse,
+    "R Squared" = rsq,
+    tree_depth,
+    min_n,
+    cost_complexity
+  ) %>% 
+  dplyr::slice_head(n = 10) %>% 
+  gt::gt() %>% 
+  gt::tab_header(title = "Regression Tree Table", subtitle = "First 10 Observations") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = c("title", "subtitle"))
+  ) %>% 
+  gt::cols_align(align = "left", columns = `Model`) %>% 
+  gt::fmt_percent(columns = matches("R Squared"), decimals = 2)
+```
+
+### Tree Plot
+
+```{r, fig.width= 20, fig.height=8}
+best_tree <- model_tree %>% 
+  dplyr::slice_max(rsq, n = 1)
+
+rpart.plot::rpart.plot(
+  best_tree$model_tree[[1]]$fit,
+  roundint = FALSE,
+  cex = 1,
+  fallen.leaves = FALSE,
+  extra = "auto",
+  main = "Regression Tree"
+)
+```
+
+## Random Forest
+
+### Top 5 Random Forest Results Table
+
+```{r}
+model_rf %>% 
+  dplyr::slice_head(n = 5) %>%
+  dplyr::transmute(
+    "Model" = model,
+    "MAE" = mae,
+    "RMSE" = rmse,
+    "R Squared" = rsq,
+    trees,
+    mtry,
+    min_n
+  ) %>%
+  gt::gt() %>% 
+  gt::tab_header(title = "Top 5 Random Forest Results") %>% 
+  gt::tab_style(
+    style = cell_fill(color = "indianred"),
+    locations = cells_title(groups = "title")
+  ) %>% 
+  gt::fmt_percent(columns = matches("R Squared"), decimals = 2)
 ```
