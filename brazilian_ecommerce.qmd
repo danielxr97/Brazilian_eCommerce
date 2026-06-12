@@ -8,6 +8,21 @@ editor: visual
 embed-resources: TRUE
 toc: TRUE
 output-file: index
+include-in-header: 
+      - text: |
+          <!-- Website's Favicon -->
+          <link rel = "icon" href = "images/favicon32.png"/>
+          <link rel = "icon" href = "images/favicon16.png"/>
+          
+          <!-- Apple's Favicon -->
+          <link rel = "apple-touch-icon" href = "images/favicon_apple.png"/>
+          
+          <!-- Open Graph Tags -->
+          <meta property = "og:title" content= "Equity Portfolio Decision Making">
+          <meta property = "og:description" content= "A portfolio selection project using machine learning, financial news sentiment, and efficient frontier analysis.">
+          <meta property = "og:image" content = "https://https://danielxr97.github.io/Portfolio_Analysis/images/intro_picture.png">
+          <meta property="og:url" content="https://https://danielxr97.github.io/Portfolio_Analysis/">
+          <meta property = "og:type" content = "website">
 
 echo: FALSE
 message: FALSE
@@ -126,7 +141,7 @@ This report presents an analytical evaluation of Olist’s transactional ecosyst
 
 1.  **Exploratory Data Analysis (EDA):** Decoding overall trajectories and categorical revenue distributions to expose structural platform vulnerabilities.
 
-2.  **Predictive Modeling Framework:** Engineering a robust time-series regression pipeline using `tidymodels` to forecast next-week category revenue ($t+1$), giving Olist and its partner merchants a distinct logistical advantage, hence improving efficiency and profitability.
+2.  **Predictive Modelling Framework:** Engineering a robust time-series regression pipeline using `tidymodels` to forecast next-week category revenue ($t+1$), giving Olist and its partner merchants a distinct logistical advantage, hence improving efficiency and profitability.
 
 # Goal 1: Exploratory Data Analysis and Strategic Findings
 
