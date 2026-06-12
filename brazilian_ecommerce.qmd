@@ -216,7 +216,7 @@ The first major finding is that Olist’s weekly purchase value increased substa
 
 To investigate this, we aggregated the order and payment data by purchase week and calculated the total weekly purchase value. We then applied STL decomposition to separate the time series into three components: trend, seasonal variation, and remainder. This approach helped distinguish long-term growth from repeated seasonal movement and short-term noise.
 
-The decomposition suggests that Olist’s purchase value was more influenced by long-term market growth than by a clear seasonal cycle. The trend panel shows a strong upward movement across most of the period, while the seasonal component is smaller relative to the overall increase in purchase value. Therefore, the main business insight is that Olist was not simply experiencing normal seasonal ups and downs; it was operating in a period of rapid expansion.
+The decomposition suggests that Olist’s purchase value was more influenced by long-term market growth than by a clear seasonal cycle. The trend panel shows a strong upward movement across most of the period, while the seasonal component is smaller relative to the overall increase in purchase value and shows no clear pattern. Therefore, the main business insight is that Olist was not simply experiencing normal seasonal ups and downs; it was operating in a period of rapid expansion.
 
 The sharp decline at the end of the graph should be interpreted carefully. Since the available dataset ends on July 5, 2018, the final weeks likely contain incomplete transaction data. As a result, the drop near the end of the series is more likely due to the data cutoff than to a real collapse in customer demand.
 
@@ -1069,8 +1069,8 @@ forecast_results %>%
   dplyr::slice_head(n = 10) %>% 
   dplyr::transmute(
     "Product Category" = product_category,
-    "Current Date" = as.character(purchase_yearweek),
-    "Forecasted Date" = as.character(pred_date),
+    "Latest Available Date" = as.character(purchase_yearweek),
+    "Next Forecasted Date" = as.character(pred_date),
     "Forecasted Revenue" = forecasted_revenue
   ) %>% 
   gt::gt() %>% 
@@ -1081,6 +1081,10 @@ forecast_results %>%
   ) %>% 
   gt::fmt_currency(columns = `Forecasted Revenue`)
 ```
+
+The next week's forecast suggests that health/beauty will remain the highest-revenue category, followed by housewares, pet shop, bed/bath/table, and sport/leisure. Comparing it to the high-revenue categories identified in the historical analysis, we can see that many of the same categories remain important in the near-term forecast. However, the appearance of categories such as housewares and pet shop suggests that short-term demand can differ from the overall historical ranking.
+
+A limitation of this model is that it uses historical category revenue and operational variables. However, it does not include external factors such as marketing campaigns, holidays, economic market conditions, or competitor actions. These external missing factors may explain some of the remaining prediction error.
 
 # Appendix
 

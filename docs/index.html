@@ -2413,7 +2413,7 @@ window.Quarto = {
 </div>
 <p>The first major finding is that Olist’s weekly purchase value increased substantially over the period under observation, suggesting strong platform growth. Although weekly purchase value fluctuated over time, the STL decomposition shows that the trend component was the dominant pattern in the data. The trend increased steadily through 2017 and reached its highest level around early 2018 before flattening near the end of the dataset.</p>
 <p>To investigate this, we aggregated the order and payment data by purchase week and calculated the total weekly purchase value. We then applied STL decomposition to separate the time series into three components: trend, seasonal variation, and remainder. This approach helped distinguish long-term growth from repeated seasonal movement and short-term noise.</p>
-<p>The decomposition suggests that Olist’s purchase value was more influenced by long-term market growth than by a clear seasonal cycle. The trend panel shows a strong upward movement across most of the period, while the seasonal component is smaller relative to the overall increase in purchase value. Therefore, the main business insight is that Olist was not simply experiencing normal seasonal ups and downs; it was operating in a period of rapid expansion.</p>
+<p>The decomposition suggests that Olist’s purchase value was more influenced by long-term market growth than by a clear seasonal cycle. The trend panel shows a strong upward movement across most of the period, while the seasonal component is smaller relative to the overall increase in purchase value and shows no clear pattern. Therefore, the main business insight is that Olist was not simply experiencing normal seasonal ups and downs; it was operating in a period of rapid expansion.</p>
 <p>The sharp decline at the end of the graph should be interpreted carefully. Since the available dataset ends on July 5, 2018, the final weeks likely contain incomplete transaction data. As a result, the drop near the end of the series is more likely due to the data cutoff than to a real collapse in customer demand.</p>
 <p>This finding matters because rapid growth creates operational pressure. If Olist treats every increase or decrease in sales as a seasonal pattern, management may miss the larger issue: the platform needs enough operational capacity to support sustained growth. Olist should therefore focus on scalable improvements such as seller onboarding, payment processing, customer support, and delivery coordination. However, because operational resources are limited, Olist should not treat all product categories equally. The next step is to identify which categories generate the most revenue so that growth planning can focus on the areas with the greatest financial impact.</p>
 </section>
@@ -3786,70 +3786,70 @@ height: 0px !important;
 </tr>
 <tr class="gt_col_headings even">
 <th id="Product-Category" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Product Category</th>
-<th id="Current-Date" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Current Date</th>
-<th id="Forecasted-Date" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Forecasted Date</th>
+<th id="Latest-Available-Date" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Latest Available Date</th>
+<th id="Next-Forecasted-Date" class="gt_col_heading gt_columns_bottom_border gt_left" data-quarto-table-cell-role="th" scope="col">Next Forecasted Date</th>
 <th id="Forecasted-Revenue" class="gt_col_heading gt_columns_bottom_border gt_right" data-quarto-table-cell-role="th" scope="col">Forecasted Revenue</th>
 </tr>
 </thead>
 <tbody class="gt_table_body">
 <tr class="odd">
 <td class="gt_row gt_left" headers="Product Category">health_beauty</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W35</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W36</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W36</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$6,338.31</td>
 </tr>
 <tr class="even">
 <td class="gt_row gt_left" headers="Product Category">housewares</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W35</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W36</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W36</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$4,803.04</td>
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left" headers="Product Category">pet_shop</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W34</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W34</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W35</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$4,429.51</td>
 </tr>
 <tr class="even">
 <td class="gt_row gt_left" headers="Product Category">bed_bath_table</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W35</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W36</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W36</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$3,642.31</td>
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left" headers="Product Category">sports_leisure</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W35</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W36</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W36</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$2,939.67</td>
 </tr>
 <tr class="even">
 <td class="gt_row gt_left" headers="Product Category">watches_gifts</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W35</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W36</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W36</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$2,648.97</td>
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left" headers="Product Category">construction_tools_construction</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W35</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W36</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W36</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$2,642.11</td>
 </tr>
 <tr class="even">
 <td class="gt_row gt_left" headers="Product Category">computers</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W34</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W34</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W35</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$2,532.92</td>
 </tr>
 <tr class="odd">
 <td class="gt_row gt_left" headers="Product Category">electronics</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W34</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W34</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W35</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$2,369.00</td>
 </tr>
 <tr class="even">
 <td class="gt_row gt_left" headers="Product Category">small_appliances</td>
-<td class="gt_row gt_left" headers="Current Date">2018 W34</td>
-<td class="gt_row gt_left" headers="Forecasted Date">2018 W35</td>
+<td class="gt_row gt_left" headers="Latest Available Date">2018 W34</td>
+<td class="gt_row gt_left" headers="Next Forecasted Date">2018 W35</td>
 <td class="gt_row gt_right" headers="Forecasted Revenue">$1,818.22</td>
 </tr>
 </tbody>
@@ -3858,6 +3858,8 @@ height: 0px !important;
 </div>
 </div>
 </div>
+<p>The next week’s forecast suggests that health/beauty will remain the highest-revenue category, followed by housewares, pet shop, bed/bath/table, and sport/leisure. Comparing it to the high-revenue categories identified in the historical analysis, we can see that many of the same categories remain important in the near-term forecast. However, the appearance of categories such as housewares and pet shop suggests that short-term demand can differ from the overall historical ranking.</p>
+<p>A limitation of this model is that it uses historical category revenue and operational variables. However, it does not include external factors such as marketing campaigns, holidays, economic market conditions, or competitor actions. These external missing factors may explain some of the remaining prediction error.</p>
 </section>
 </section>
 <section id="appendix" class="level1">
